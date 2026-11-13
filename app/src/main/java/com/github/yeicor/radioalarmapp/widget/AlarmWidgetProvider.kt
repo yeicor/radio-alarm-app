@@ -7,6 +7,8 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import com.github.yeicor.radioalarmapp.MainActivity
@@ -17,6 +19,8 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * A deliberately tiny next-alarm widget: one line of short text and one line with
@@ -38,8 +42,9 @@ class AlarmWidgetProvider : AppWidgetProvider() {
                 )
                 if (ids.isEmpty()) return
                 scheduleUndoRefresh(context)
-                val views = buildViews(context)
-                ids.forEach { manager.updateAppWidget(it, views) }
+                ids.forEach { id ->
+                    manager.updateAppWidget(id, buildViews(context, manager.getAppWidgetOptions(id)))
+                }
             }
         }
 
@@ -71,8 +76,9 @@ class AlarmWidgetProvider : AppWidgetProvider() {
         }
 
         @androidx.annotation.VisibleForTesting
-        internal fun buildViews(context: Context): RemoteViews {
+        internal fun buildViews(context: Context, options: Bundle? = null): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.radio_alarm_widget)
+            applySizing(context, views, options)
             val now = ZonedDateTime.now()
             val repo = AlarmRepository.get(context)
             val next = AlarmOverrides.next(context, repo.alarms.value, now)
@@ -136,6 +142,26 @@ class AlarmWidgetProvider : AppWidgetProvider() {
             return views
         }
 
+        /**
+         * Scale type and button padding with the widget's current size. The weighted layout
+         * already gives the buttons most of the height; this keeps the type readable and the
+         * buttons easy to hit at every size from 2x1 upwards.
+         */
+        private fun applySizing(context: Context, views: RemoteViews, options: Bundle?) {
+            val widthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ?: 180
+            val heightDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) ?: 50
+            val width = widthDp.coerceIn(100, 400)
+            val height = heightDp.coerceIn(40, 240)
+            val textSp = min(height * 0.28f, width * 0.13f).coerceIn(11f, 30f)
+            views.setTextViewTextSize(R.id.widget_alarm_text, TypedValue.COMPLEX_UNIT_SP, textSp)
+
+            val density = context.resources.displayMetrics.density
+            val paddingPx = ((height * 0.12f).coerceIn(3f, 14f) * density).roundToInt()
+            listOf(R.id.widget_minus, R.id.widget_middle, R.id.widget_plus).forEach { id ->
+                views.setViewPadding(id, paddingPx, paddingPx, paddingPx, paddingPx)
+            }
+        }
+
         private fun action(context: Context, action: String, request: Int): PendingIntent =
             PendingIntent.getBroadcast(
                 context,
@@ -161,6 +187,16 @@ class AlarmWidgetProvider : AppWidgetProvider() {
     ) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
         refresh(context)
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        appWidgetManager.updateAppWidget(appWidgetId, buildViews(context, newOptions))
     }
 
     override fun onReceive(context: Context, intent: Intent) {

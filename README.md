@@ -12,7 +12,7 @@ output, ramps its own player volume, and falls back through local audio, the pho
 sound and a bundled sound.
 
 - Package: `com.github.yeicor.radioalarmapp`
-- Version: 0.0.4 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
+- Version: 0.0.5 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
 - Repository: <https://github.com/yeicor/radio-alarm-app>
 
 ## Features
@@ -32,9 +32,10 @@ sound and a bundled sound.
 - **Alarm-volume warnings** – muted/zero is critical and below 30% is a warning, shown
   immediately after saving or enabling an alarm and by the automatic checks.
 - **Snooze** – 1–30 minutes and 0–5 snoozes per alarm, persisted across reboots.
-- **Widget** – a compact two-line 3×1 card with the next alarm, an alarm icon and three icon
-  buttons: `−10 min`, `skip` and `+10 min`; after a skip the middle button becomes `undo`. It
-  also fits 2×1. Mixing a skip with an offset keeps the skip and shows only the small offset.
+- **Widget** – a two-line card with the next alarm, an alarm icon and three icon buttons:
+  `−10 min`, `skip` and `+10 min`; after a skip the middle button becomes `undo`. It starts at
+  3×1, fits 2×1, and scales its text, icons and buttons as you resize it. Mixing a skip with an
+  offset keeps the skip and shows only the small offset.
 - **Exact alarms** – `AlarmManager.setAlarmClock`, direct-boot-aware, restored after reboot,
   time change, timezone change and app update.
 - **Full-screen wake-up** – lock-screen activity with snooze/dismiss, also available from the
@@ -90,7 +91,7 @@ Tap the **?** next to a section for a short explanation instead of a wall of tex
 
 Add the widget from your launcher's widget list. It asks for a 3×1 space (2×1 also works)
 and shows the next alarm in short form (for example `07:30 · Tomorrow`, plus `+10m` when
-shifted) above three compact buttons:
+shifted) above three buttons. Text, icons and buttons grow with the widget:
 
 | Button | Action |
 | --- | --- |
