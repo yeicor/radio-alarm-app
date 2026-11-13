@@ -61,14 +61,11 @@ class AlarmRepository private constructor(context: Context) {
     fun updateSettings(settings: AppSettings) = synchronized(lock) {
         val json = JSONObject().apply {
             put("defaultRampSeconds", settings.defaultRampSeconds)
-            put("defaultVolumePercent", settings.defaultVolumePercent)
             put("defaultSnoozeMinutes", settings.defaultSnoozeMinutes)
             put("defaultMaxSnoozes", settings.defaultMaxSnoozes)
             put("defaultVibrate", settings.defaultVibrate)
-            put("defaultOverrideDnd", settings.defaultOverrideDnd)
             put("fallbackFolderUri", settings.fallbackFolderUri ?: "")
             put("systemAlarmSoundUri", settings.systemAlarmSoundUri ?: "")
-            put("audibleWarnings", settings.audibleWarnings)
         }
         prefs.edit().putString(KEY_SETTINGS, json.toString()).commit()
         _settings.value = settings
@@ -104,14 +101,11 @@ class AlarmRepository private constructor(context: Context) {
         val json = runCatching { stored?.let(::JSONObject) }.getOrNull()
         return AppSettings(
             defaultRampSeconds = json?.optInt("defaultRampSeconds", 30) ?: 30,
-            defaultVolumePercent = json?.optInt("defaultVolumePercent", 90) ?: 90,
             defaultSnoozeMinutes = json?.optInt("defaultSnoozeMinutes", 5) ?: 5,
             defaultMaxSnoozes = json?.optInt("defaultMaxSnoozes", 3) ?: 3,
             defaultVibrate = json?.optBoolean("defaultVibrate", true) ?: true,
-            defaultOverrideDnd = json?.optBoolean("defaultOverrideDnd", true) ?: true,
             fallbackFolderUri = if (json?.has("fallbackFolderUri") == true) json.optString("fallbackFolderUri").ifBlank { null } else null,
             systemAlarmSoundUri = if (json?.has("systemAlarmSoundUri") == true) json.optString("systemAlarmSoundUri").ifBlank { null } else null,
-            audibleWarnings = json?.optBoolean("audibleWarnings", true) ?: true,
         )
     }
 

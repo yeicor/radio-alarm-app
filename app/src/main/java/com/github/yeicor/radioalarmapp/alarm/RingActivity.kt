@@ -379,13 +379,6 @@ private fun AlarmRingScreen(
                     )
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Radio Alarm App keeps your alarm volume and ramps its own playback from 0% to 100%. Raise the phone's alarm volume if you can't hear it.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }

@@ -82,15 +82,11 @@ object SnoozeStore {
 object AlarmScheduler {
     const val ACTION_FIRE = "com.github.yeicor.radioalarmapp.action.FIRE_ALARM"
     const val ACTION_FIRE_SNOOZE = "com.github.yeicor.radioalarmapp.action.FIRE_SNOOZE"
-    const val ACTION_PREFLIGHT = "com.github.yeicor.radioalarmapp.action.PREFLIGHT"
-    private const val PREFLIGHT_REQUEST = 874_201
-    private const val PREFLIGHT_LEAD_MILLIS = 45 * 60 * 1000L
 
     fun scheduleAll(context: Context) {
         val repo = AlarmRepository.get(context)
         val enabled = repo.alarms.value.filter { it.enabled }
         enabled.forEach { scheduleAlarm(context, it) }
-        schedulePreflight(context, enabled)
         com.github.yeicor.radioalarmapp.widget.AlarmWidgetProvider.refresh(context)
     }
 
@@ -109,7 +105,6 @@ object AlarmScheduler {
             // require at least one minute of headroom.
             scheduleAlarmAfter(context, alarm, ZonedDateTime.now().plusMinutes(1))
         }
-        schedulePreflight(context, AlarmRepository.get(context).alarms.value.filter { it.enabled })
         com.github.yeicor.radioalarmapp.widget.AlarmWidgetProvider.refresh(context)
     }
 
@@ -208,34 +203,6 @@ object AlarmScheduler {
         putExtra(AlarmReceiver.EXTRA_ALARM_ID, alarm.id)
         putExtra(AlarmReceiver.EXTRA_SNOOZE, snooze)
         putExtra(AlarmReceiver.EXTRA_SNOOZE_COUNT, snoozeCount)
-    }
-
-    fun schedulePreflight(context: Context, alarms: List<Alarm>) {
-        val manager = context.getSystemService(AlarmManager::class.java) ?: return
-        val pending = PendingIntent.getBroadcast(
-            context,
-            PREFLIGHT_REQUEST,
-            Intent(context, PreflightReceiver::class.java).setAction(ACTION_PREFLIGHT),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val now = System.currentTimeMillis()
-        val next = alarms.mapNotNull { alarm ->
-            AlarmOverrides.effectiveOccurrence(context, alarm)?.toInstant()?.toEpochMilli()
-        }.minOrNull()
-        if (next == null) {
-            manager.cancel(pending)
-            return
-        }
-        val triggerAt = next - PREFLIGHT_LEAD_MILLIS
-        if (triggerAt <= now + 60_000L) {
-            manager.cancel(pending)
-            return
-        }
-        runCatching {
-            manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
-        }.onFailure {
-            runCatching { manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending) }
-        }
     }
 
     fun requestCode(alarmId: Long): Int = (alarmId and 0x3FFFFFFFL).toInt()

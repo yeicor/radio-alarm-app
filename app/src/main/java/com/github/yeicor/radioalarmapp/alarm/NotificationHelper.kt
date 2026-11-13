@@ -16,7 +16,7 @@ import com.github.yeicor.radioalarmapp.util.Permissions
 
 object NotificationHelper {
     const val CHANNEL_RING = "radio_alarm_app_ringing_v2"
-    const val CHANNEL_RING_BYPASS = "radio_alarm_app_ringing_bypass_v1"
+    private const val CHANNEL_RING_BYPASS_LEGACY = "radio_alarm_app_ringing_bypass_v1"
     private const val CHANNEL_RING_LEGACY = "radio_alarm_app_ringing_v1"
     const val CHANNEL_SAFETY = "radio_alarm_app_safety_v1"
     private const val SAFETY_NOTIFICATION_ID = 8100
@@ -27,7 +27,6 @@ object NotificationHelper {
 
     fun ensureChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        val canBypass = Permissions.hasDndAccess(context)
 
         val ringing = NotificationChannel(
             CHANNEL_RING,
@@ -39,29 +38,11 @@ object NotificationHelper {
             enableVibration(false)
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             setShowBadge(false)
-            setBypassDnd(false)
         }
         manager.createNotificationChannel(ringing)
 
-        val ringingBypass = NotificationChannel(
-            CHANNEL_RING_BYPASS,
-            context.getString(R.string.alarm_channel_name),
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = context.getString(R.string.alarm_channel_description)
-            setSound(null, null)
-            enableVibration(false)
-            lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
-            setShowBadge(false)
-            // Channel-level bypass is the only supported way for an app with notification
-            // policy access to make an alarm notification break through DND. Manually
-            // changing the global interruption filter creates a persistent implicit zen
-            // rule on Android 15+ and cannot override a stricter manual DND mode anyway.
-            runCatching { setBypassDnd(canBypass) }
-        }
-        manager.createNotificationChannel(ringingBypass)
-
-        // Remove the v1 channel used by builds that toggled the global DND filter.
+        // Remove channels left behind by older builds.
+        runCatching { manager.deleteNotificationChannel(CHANNEL_RING_BYPASS_LEGACY) }
         runCatching { manager.deleteNotificationChannel(CHANNEL_RING_LEGACY) }
 
         val safety = NotificationChannel(
@@ -82,7 +63,6 @@ object NotificationHelper {
                     .build()
                 setSound(sound, attrs)
             }
-            runCatching { setBypassDnd(canBypass) }
         }
         manager.createNotificationChannel(safety)
     }
@@ -120,7 +100,7 @@ object NotificationHelper {
             ringIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val channelId = if (alarm.overrideDnd) CHANNEL_RING_BYPASS else CHANNEL_RING
+        val channelId = CHANNEL_RING
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_stat_wake)
             .setContentTitle(if (test) "Test: ${alarm.displayLabel()}" else alarm.displayLabel())
@@ -203,9 +183,6 @@ object NotificationHelper {
             }
             append("\nFallbacks ready: ")
             append(report.fallbackSummary)
-            if (!Permissions.hasDndAccess(context)) {
-                append("\n\nGrant Do Not Disturb access so safety warnings can break through at night.")
-            }
         }
         val open = PendingIntent.getActivity(
             context,

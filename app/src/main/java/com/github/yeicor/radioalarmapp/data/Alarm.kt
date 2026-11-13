@@ -20,12 +20,9 @@ data class Alarm(
     val streamUrl: String = DEFAULT_STREAM_URL,
     val localFallbackUris: List<String> = emptyList(),
     val rampSeconds: Int = 30,
-    /** Legacy field kept for saved alarms. Playback always ramps its player volume to 100%. */
-    val targetVolumePercent: Int = 90,
     val snoozeMinutes: Int = 5,
     val maxSnoozes: Int = 3,
     val vibrate: Boolean = true,
-    val overrideDnd: Boolean = true,
     val useSystemFallback: Boolean = true,
     val createdAt: Long = 0L,
 ) {
@@ -66,11 +63,9 @@ data class Alarm(
         put("streamUrl", streamUrl)
         put("localFallbackUris", JSONArray(localFallbackUris))
         put("rampSeconds", rampSeconds)
-        put("targetVolumePercent", targetVolumePercent)
         put("snoozeMinutes", snoozeMinutes)
         put("maxSnoozes", maxSnoozes)
         put("vibrate", vibrate)
-        put("overrideDnd", overrideDnd)
         put("useSystemFallback", useSystemFallback)
         put("createdAt", createdAt)
     }
@@ -103,11 +98,9 @@ data class Alarm(
                 streamUrl = json.optString("streamUrl", DEFAULT_STREAM_URL),
                 localFallbackUris = uris,
                 rampSeconds = json.optInt("rampSeconds", 30).coerceIn(0, 300),
-                targetVolumePercent = json.optInt("targetVolumePercent", 90).coerceIn(10, 100),
                 snoozeMinutes = json.optInt("snoozeMinutes", 5).coerceIn(1, 60),
                 maxSnoozes = json.optInt("maxSnoozes", 3).coerceIn(0, 10),
                 vibrate = json.optBoolean("vibrate", true),
-                overrideDnd = json.optBoolean("overrideDnd", true),
                 useSystemFallback = json.optBoolean("useSystemFallback", true),
                 createdAt = json.optLong("createdAt", 0L),
             )
@@ -121,21 +114,16 @@ data class Alarm(
 
 data class AppSettings(
     val defaultRampSeconds: Int = 30,
-    val defaultVolumePercent: Int = 90,
     val defaultSnoozeMinutes: Int = 5,
     val defaultMaxSnoozes: Int = 3,
     val defaultVibrate: Boolean = true,
-    val defaultOverrideDnd: Boolean = true,
     val fallbackFolderUri: String? = null,
     val systemAlarmSoundUri: String? = null,
-    val audibleWarnings: Boolean = true,
 )
 
 fun Alarm.withDefaults(settings: AppSettings): Alarm = copy(
     rampSeconds = settings.defaultRampSeconds,
-    targetVolumePercent = settings.defaultVolumePercent,
     snoozeMinutes = settings.defaultSnoozeMinutes,
     maxSnoozes = settings.defaultMaxSnoozes,
     vibrate = settings.defaultVibrate,
-    overrideDnd = settings.defaultOverrideDnd,
 )

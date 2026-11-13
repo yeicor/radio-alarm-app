@@ -16,11 +16,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -41,16 +50,7 @@ import com.github.yeicor.radioalarmapp.ui.theme.Warning
 data class ReliabilityPermissions(
     val exactAlarms: Boolean,
     val notifications: Boolean,
-    val fullScreen: Boolean,
-    val dndAccess: Boolean,
-    val sleepGuard: Boolean,
-    val batteryOptimized: Boolean,
-) {
-    val criticalMissing: Int
-        get() = listOf(!exactAlarms, !notifications).count { it }
-    val setupMissing: Int
-        get() = listOf(!exactAlarms, !notifications, !fullScreen, !dndAccess, !sleepGuard, !batteryOptimized).count { it }
-}
+)
 
 @Composable
 fun RadioAlarmAppBackground(content: @Composable BoxScope.() -> Unit) {
@@ -205,7 +205,7 @@ fun IconBubble(
 fun StatusRow(
     icon: ImageVector,
     title: String,
-    detail: String,
+    detail: String? = null,
     ok: Boolean,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
@@ -237,7 +237,9 @@ fun StatusRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Text(detail, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            if (!detail.isNullOrBlank()) {
+                Text(detail, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
         }
         if (!ok && actionLabel != null && onAction != null) {
             Spacer(Modifier.width(8.dp))
@@ -256,4 +258,31 @@ fun DividerLine(modifier: Modifier = Modifier) {
             .height(1.dp)
             .background(Hairline),
     )
+}
+
+/** The small "?" affordance used instead of paragraphs of explanatory text. */
+@Composable
+fun HelpButton(title: String, text: String, modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    IconButton(
+        onClick = { open = true },
+        modifier = modifier.size(34.dp),
+    ) {
+        Icon(
+            Icons.AutoMirrored.Rounded.HelpOutline,
+            contentDescription = "Help: $title",
+            tint = TextSecondary,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(title) },
+            text = { Text(text) },
+            confirmButton = {
+                TextButton(onClick = { open = false }) { Text("Got it", color = Sunrise) }
+            },
+        )
+    }
 }

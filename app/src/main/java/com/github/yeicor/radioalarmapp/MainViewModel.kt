@@ -53,8 +53,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Log.e("Radio Alarm App", "Could not reschedule after save", t)
         }
         if (saved.enabled) {
-            // The user asked for low/zero alarm-volume warnings immediately after setting
-            // the alarm, not only at bedtime.
+            // Warn immediately after setting the alarm, not only on the periodic check.
             runCheck(notify = true)
         }
         return saved

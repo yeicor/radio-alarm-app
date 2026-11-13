@@ -110,12 +110,12 @@ class AlarmWidgetProvider : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_buttons, View.VISIBLE)
             views.setOnClickPendingIntent(R.id.widget_alarm_text, openApp(context))
 
-            val middleAction = if (AlarmOverrides.canUndoSkip(context, alarm.id, now)) {
+            val canUndo = AlarmOverrides.canUndoSkip(context, alarm.id, now)
+            val middleAction = if (canUndo) {
                 AlarmWidgetActionReceiver.ACTION_UNDO
             } else {
                 AlarmWidgetActionReceiver.ACTION_SKIP
             }
-            val middleText = if (middleAction == AlarmWidgetActionReceiver.ACTION_UNDO) "<<" else ">>"
 
             views.setOnClickPendingIntent(
                 R.id.widget_minus,
@@ -129,7 +129,14 @@ class AlarmWidgetProvider : AppWidgetProvider() {
                 R.id.widget_plus,
                 action(context, AlarmWidgetActionReceiver.ACTION_PLUS, 9_253),
             )
-            views.setTextViewText(R.id.widget_middle, middleText)
+            views.setImageViewResource(
+                R.id.widget_middle,
+                if (canUndo) R.drawable.ic_widget_undo else R.drawable.ic_widget_skip,
+            )
+            views.setContentDescription(
+                R.id.widget_middle,
+                context.getString(if (canUndo) R.string.widget_action_undo else R.string.widget_action_skip),
+            )
             return views
         }
 

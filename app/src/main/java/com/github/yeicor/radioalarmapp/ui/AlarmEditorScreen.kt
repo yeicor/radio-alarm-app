@@ -37,7 +37,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -138,7 +137,6 @@ fun AlarmEditorScreen(
     var snoozeMinutes by remember { mutableStateOf(initial.snoozeMinutes) }
     var maxSnoozes by remember { mutableStateOf(initial.maxSnoozes) }
     var vibrate by remember { mutableStateOf(initial.vibrate) }
-    var overrideDnd by remember { mutableStateOf(initial.overrideDnd) }
     var useSystemFallback by remember { mutableStateOf(initial.useSystemFallback) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -206,8 +204,6 @@ fun AlarmEditorScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             color = SunriseSoft,
                         )
-                        Spacer(Modifier.height(4.dp))
-                        Text("Tap to change time", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                     }
                 }
             }
@@ -285,14 +281,17 @@ fun AlarmEditorScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconBubble(Icons.Rounded.Radio, Sky)
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Web radio", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                                Text(
-                                    "HLS (.m3u8), MP3, AAC or Ogg streams",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary,
-                                )
-                            }
+                            Text(
+                                "Web radio",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            HelpButton(
+                                title = "Web radio",
+                                text = "HLS (.m3u8), MP3, AAC and Ogg streams work. Use Test to check the " +
+                                    "stream before saving; it downloads a real audio segment, not just the playlist.",
+                            )
                         }
                         Spacer(Modifier.height(14.dp))
                         OutlinedTextField(
@@ -358,14 +357,17 @@ fun AlarmEditorScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconBubble(Icons.Rounded.LibraryMusic, Mint)
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Local backup audio", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                                Text(
-                                    "Used automatically if the radio cannot play.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary,
-                                )
-                            }
+                            Text(
+                                "Local backup audio",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            HelpButton(
+                                title = "Local backup audio",
+                                text = "Files and folders are used automatically when the radio cannot play. " +
+                                    "The phone alarm sound and the built-in sound follow as extra fallbacks.",
+                            )
                         }
                         Spacer(Modifier.height(12.dp))
                         val defaultFolderUri = settings.fallbackFolderUri
@@ -452,14 +454,8 @@ fun AlarmEditorScreen(
                         SettingSwitch(
                             icon = Icons.Rounded.MusicNote,
                             title = "Phone alarm sound fallback",
-                            description = "Try the phone's configured alarm sound after local audio.",
                             checked = useSystemFallback,
                             onCheckedChange = { useSystemFallback = it },
-                        )
-                        Text(
-                            "The built-in Radio Alarm App sound is always the final fallback.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
                         )
                     }
                 }
@@ -471,7 +467,17 @@ fun AlarmEditorScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconBubble(Icons.AutoMirrored.Rounded.VolumeUp, Sunrise)
                             Spacer(Modifier.width(12.dp))
-                            Text("Wake-up behavior", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+                            Text(
+                                "Wake-up behavior",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            HelpButton(
+                                title = "Volume and snooze",
+                                text = "The app ramps its own player volume from 0% to 100% and never changes " +
+                                    "the phone's alarm volume. Snooze restarts the same verified playback.",
+                            )
                         }
                         Spacer(Modifier.height(16.dp))
                         ValueSlider(
@@ -482,12 +488,6 @@ fun AlarmEditorScreen(
                             steps = 35,
                             onChange = { rampSeconds = it.roundToInt() },
                         )
-                        Text(
-                            "Radio Alarm App ramps its own player from 0% to 100% and leaves your phone's alarm volume untouched.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                        )
-                        Spacer(Modifier.height(8.dp))
                         ValueSlider(
                             title = "Snooze duration",
                             value = snoozeMinutes,
@@ -510,39 +510,13 @@ fun AlarmEditorScreen(
                         SettingSwitch(
                             icon = Icons.Rounded.Vibration,
                             title = "Vibrate while ringing",
-                            description = "Extra physical backup if audio output is blocked.",
                             checked = vibrate,
                             onCheckedChange = { vibrate = it },
-                        )
-                        SettingSwitch(
-                            icon = Icons.Rounded.DoNotDisturbOn,
-                            title = "Bypass Do Not Disturb",
-                            description = "Requires Do Not Disturb access. The alarm notification and sound break through DND.",
-                            checked = overrideDnd,
-                            onCheckedChange = { overrideDnd = it },
                         )
                     }
                 }
             }
 
-            item {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = Sky.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, Sky.copy(alpha = 0.2f)),
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Sky, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            "During ringing Radio Alarm App checks that the player is active and audio is really leaving the phone. " +
-                                "It retries the radio twice, then walks through local audio, the phone alarm sound and this app's built-in sound.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                        )
-                    }
-                }
-            }
         }
 
         Surface(
@@ -566,7 +540,6 @@ fun AlarmEditorScreen(
                             snoozeMinutes = snoozeMinutes,
                             maxSnoozes = maxSnoozes,
                             vibrate = vibrate,
-                            overrideDnd = overrideDnd,
                             useSystemFallback = useSystemFallback,
                         ),
                     )
@@ -648,6 +621,12 @@ private fun EditorHeader(title: String, onBack: () -> Unit, onDelete: (() -> Uni
             color = TextPrimary,
             modifier = Modifier.weight(1f),
         )
+        HelpButton(
+            title = "Alarm help",
+            text = "Radio Alarm App verifies that audio is really playing and retries the stream twice. " +
+                "Then it tries local audio, the phone alarm sound and finally a built-in sound. " +
+                "The volume ramp only changes the app's player; your alarm volume stays as configured.",
+        )
         if (onDelete != null) {
             IconButton(onClick = onDelete) {
                 Icon(Icons.Rounded.Delete, contentDescription = "Delete alarm", tint = TextSecondary)
@@ -682,7 +661,7 @@ private fun StreamTestResult(result: StreamProbeResult) {
 private fun SettingSwitch(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    description: String,
+    description: String? = null,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -696,7 +675,9 @@ private fun SettingSwitch(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Text(description, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            if (!description.isNullOrBlank()) {
+                Text(description, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
         }
         Spacer(Modifier.width(10.dp))
         Switch(

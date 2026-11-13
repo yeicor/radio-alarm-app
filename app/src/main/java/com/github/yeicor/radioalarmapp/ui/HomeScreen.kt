@@ -1,7 +1,5 @@
 package com.github.yeicor.radioalarmapp.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +33,6 @@ import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Settings
@@ -96,15 +93,12 @@ import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun HomeScreen(
     alarms: List<Alarm>,
     settings: AppSettings,
     report: SafetyReport?,
-    permissions: ReliabilityPermissions,
     checking: Boolean,
     onAdd: () -> Unit,
     onEdit: (Alarm) -> Unit,
@@ -165,18 +159,6 @@ fun HomeScreen(
                 item { EmptyNextCard(onAdd = onAdd) }
             }
 
-            if (alarms.isNotEmpty() && (permissions.setupMissing > 0 || (report?.warningCount ?: 0) > 0)) {
-                item {
-                    ReliabilityCard(
-                        permissions = permissions,
-                        report = report,
-                        onSettings = onSettings,
-                        onRunCheck = onRunCheck,
-                        checking = checking,
-                    )
-                }
-            }
-
             if (!report?.isReady.orFalse() && !report?.issues.isNullOrEmpty()) {
                 item {
                     SafetySummaryCard(
@@ -188,20 +170,20 @@ fun HomeScreen(
                 }
             }
 
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Your alarms",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = TextPrimary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (alarms.isNotEmpty()) {
+            if (alarms.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Your alarms",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
                         Text(
                             "${alarms.count { it.enabled }} active",
                             style = MaterialTheme.typography.labelMedium,
@@ -209,13 +191,6 @@ fun HomeScreen(
                         )
                     }
                 }
-            }
-
-            if (alarms.isEmpty()) {
-                item {
-                    FirstAlarmCard(onAdd = onAdd)
-                }
-            } else {
                 items(alarms, key = { it.id }) { alarm ->
                     AlarmCard(
                         alarm = alarm,
@@ -230,15 +205,6 @@ fun HomeScreen(
                 }
             }
 
-            item {
-                Text(
-                    "Radio Alarm App verifies real audio output, not just that the stream URL responded. " +
-                        "If the radio fails it tries local audio, your phone alarm sound, and finally a built-in sound.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
-                )
-            }
         }
 
         ExtendedFloatingActionButton(
@@ -303,19 +269,19 @@ private fun HomeHeader(onSettings: () -> Unit) {
             )
         }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Radio Alarm App",
-                style = MaterialTheme.typography.headlineMedium,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                "Radio alarms that refuse to fail",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-            )
-        }
+        Text(
+            "Radio Alarm App",
+            style = MaterialTheme.typography.headlineMedium,
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+        )
+        HelpButton(
+            title = "How Radio Alarm App works",
+            text = "The alarm plays your radio stream and verifies that audio is really leaving the phone. " +
+                "If it fails, it tries local audio, the phone alarm sound and finally a built-in sound.\n\n" +
+                "A low-power check runs about ten times a day and notifies you if something could stop the alarm.",
+        )
         IconButton(onClick = onSettings) {
             Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = TextSecondary)
         }
@@ -413,9 +379,9 @@ private fun NextAlarmCard(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     when {
-                        report == null -> "Run a sleep check before bed"
+                        report == null -> "Not checked yet"
                         report.isReady -> "Last check passed"
-                        report.criticalCount > 0 -> "${report.criticalCount} critical issue${if (report.criticalCount == 1) "" else "s"}"
+                        report.criticalCount > 0 -> "${report.criticalCount} critical"
                         else -> "${report.warningCount} warning${if (report.warningCount == 1) "" else "s"}"
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -423,7 +389,7 @@ private fun NextAlarmCard(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = onRunCheck, enabled = !checking) {
-                    Text(if (checking) "Checking…" else "Check now", color = SunriseSoft)
+                    Text(if (checking) "Checking…" else "Check", color = SunriseSoft)
                 }
             }
         }
@@ -437,61 +403,15 @@ private fun EmptyNextCard(onAdd: () -> Unit) {
             StatusPill("NO UPCOMING ALARM", Sky, Icons.Rounded.Alarm)
             Spacer(Modifier.height(16.dp))
             Text(
-                "Nothing scheduled.\nSet an alarm now.",
+                "Nothing scheduled.",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary,
             )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Pick a radio stream and Radio Alarm App will keep multiple sound backups ready.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ReliabilityCard(
-    permissions: ReliabilityPermissions,
-    report: SafetyReport?,
-    onSettings: () -> Unit,
-    onRunCheck: () -> Unit,
-    checking: Boolean,
-) {
-    val critical = permissions.criticalMissing
-    val title = if (critical > 0) {
-        "Finish reliability setup"
-    } else {
-        "Review your sleep check"
-    }
-    GlassCard(accent = if (critical > 0) Coral else Warning) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBubble(
-                    if (critical > 0) Icons.Rounded.NotificationsActive else Icons.Rounded.WarningAmber,
-                    if (critical > 0) Coral else Warning,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                    Text(
-                        when {
-                            critical > 0 -> "$critical critical permission${if (critical == 1) "" else "s"} may stop the alarm from waking you."
-                            permissions.setupMissing > 0 -> "Improve DND bypass, lock-screen wake-up and bedtime checks."
-                            else -> report?.issues?.firstOrNull()?.title ?: "A recent check found something to review."
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                    )
-                }
-            }
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onSettings) { Text("Open setup", color = Sunrise) }
-                TextButton(onClick = onRunCheck, enabled = !checking) {
-                    Text(if (checking) "Checking…" else "Run check", color = TextSecondary)
-                }
+            TextButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text("Create an alarm", color = Sunrise)
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Sunrise, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -698,30 +618,6 @@ private fun AlarmCard(
     }
 }
 
-@Composable
-private fun FirstAlarmCard(onAdd: () -> Unit) {
-    GlassCard {
-        Column(Modifier.padding(22.dp)) {
-            IconBubble(Icons.Rounded.Alarm, Sunrise, 52)
-            Spacer(Modifier.height(14.dp))
-            Text("Set your first alarm", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Start with the SomaFM example or paste any HLS, MP3 or AAC radio stream. " +
-                    "Add local music as a backup if you want.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-            )
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                Text("Create an alarm", color = Sunrise)
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Sunrise, modifier = Modifier.size(18.dp))
-            }
-        }
-    }
-}
-
 private fun Boolean?.orFalse(): Boolean = this == true
 
 /** Human-readable description of a one-shot widget change, shown next to the effective time. */
@@ -737,4 +633,3 @@ private fun overrideLabel(override: AlarmOverride, zone: ZoneId): String {
     }
 }
 
-private val shortTime = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())

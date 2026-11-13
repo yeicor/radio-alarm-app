@@ -28,8 +28,7 @@ import java.time.ZonedDateTime
 enum class CheckSeverity { OK, NOTICE, WARNING, CRITICAL }
 
 enum class SafetyFix {
-    NONE, EXACT_ALARMS, NOTIFICATIONS, FULL_SCREEN, DND_ACCESS, SLEEP_GUARD,
-    BATTERY_OPTIMIZATION, EDIT_ALARM, CHARGE, ALARM_VOLUME,
+    NONE, EXACT_ALARMS, NOTIFICATIONS, EDIT_ALARM, CHARGE, ALARM_VOLUME,
 }
 
 data class SafetyIssue(
@@ -196,16 +195,14 @@ object SafetyChecker {
                     issues += SafetyIssue(
                         "alarm_volume_zero", CheckSeverity.CRITICAL,
                         if (alarmVolume.muted) "Alarm volume is muted" else "Alarm volume is at zero",
-                        "Radio Alarm App plays at your phone's alarm volume, so every fallback would be silent. " +
-                            "Raise the alarm volume before sleeping.",
+                        "Every sound source would be silent. Raise the alarm volume.",
                         SafetyFix.ALARM_VOLUME, "Raise alarm volume",
                     )
                 } else if (alarmVolume.percent < 30) {
                     issues += SafetyIssue(
                         "alarm_volume_low", CheckSeverity.WARNING,
                         "Alarm volume is low (${alarmVolume.percent}%)",
-                        "Radio Alarm App cannot play louder than your phone's alarm volume. " +
-                            "Raise it so the ramp can reach a reliably loud level.",
+                        "Raise it so the alarm is reliably loud.",
                         SafetyFix.ALARM_VOLUME, "Raise alarm volume",
                     )
                 }
@@ -214,7 +211,7 @@ object SafetyChecker {
                     issues += SafetyIssue(
                         "exact_alarm", CheckSeverity.CRITICAL,
                         "Exact alarms are blocked",
-                        "Android may delay or skip the alarm. Allow alarms and reminders.",
+                        "Android may delay or skip the alarm.",
                         SafetyFix.EXACT_ALARMS, "Allow exact alarms",
                     )
                 }
@@ -222,40 +219,8 @@ object SafetyChecker {
                     issues += SafetyIssue(
                         "notifications", CheckSeverity.CRITICAL,
                         "Notifications are off",
-                        "The ringing screen and snooze controls cannot appear. Turn notifications on.",
+                        "The ringing screen and snooze controls cannot appear.",
                         SafetyFix.NOTIFICATIONS, "Turn on notifications",
-                    )
-                }
-                if (!Permissions.canUseFullScreenIntent(context)) {
-                    issues += SafetyIssue(
-                        "full_screen", CheckSeverity.WARNING,
-                        "Full-screen alarms are blocked",
-                        "The alarm will still ring, but the wake-up screen may not open over the lock screen.",
-                        SafetyFix.FULL_SCREEN, "Allow full-screen alarms",
-                    )
-                }
-                if (!Permissions.hasDndAccess(context)) {
-                    issues += SafetyIssue(
-                        "dnd_access", CheckSeverity.WARNING,
-                        "Do Not Disturb access is off",
-                        "Radio Alarm App cannot make alarm notifications break through DND or show urgent bedtime warnings.",
-                        SafetyFix.DND_ACCESS, "Allow DND access",
-                    )
-                }
-                if (!Permissions.hasNotificationListenerAccess(context)) {
-                    issues += SafetyIssue(
-                        "sleep_guard", CheckSeverity.NOTICE,
-                        "Sleep Guard is not connected",
-                        "Radio Alarm App cannot detect when you enable Do Not Disturb to run a last-minute check.",
-                        SafetyFix.SLEEP_GUARD, "Connect Sleep Guard",
-                    )
-                }
-                if (!Permissions.isBatteryOptimizationIgnored(context)) {
-                    issues += SafetyIssue(
-                        "battery_opt", CheckSeverity.NOTICE,
-                        "Battery optimization is active",
-                        "Some phones may delay background playback. Exempting Radio Alarm App improves reliability.",
-                        SafetyFix.BATTERY_OPTIMIZATION, "Exempt from optimization",
                     )
                 }
                 if (battery.percent in 0..24 && !battery.charging) {
@@ -265,7 +230,7 @@ object SafetyChecker {
                         issues += SafetyIssue(
                             "battery", CheckSeverity.CRITICAL,
                             "Battery is low (${battery.percent}%)",
-                            "The alarm is about ${TimeText.until(nextOccurrence!!)} away. Charge the phone before sleeping.",
+                            "Alarm is ${TimeText.until(nextOccurrence!!)} away. Charge before sleeping.",
                             SafetyFix.CHARGE, "Charge your phone",
                         )
                     }
@@ -277,11 +242,11 @@ object SafetyChecker {
                         issues += SafetyIssue(
                             "local_backup", CheckSeverity.WARNING,
                             "Local backup is unavailable",
-                            "The selected files or folder cannot be read anymore. " +
+                            "The selected files or folder cannot be read. " +
                                 if (alarm.useSystemFallback) {
-                                    "The phone alarm sound and built-in sound remain available."
+                                    "Phone alarm and built-in sounds remain."
                                 } else {
-                                    "The built-in Radio Alarm App sound remains available."
+                                    "The built-in sound remains."
                                 },
                             SafetyFix.EDIT_ALARM, "Review backup audio",
                         )
@@ -304,7 +269,7 @@ object SafetyChecker {
                             issues += SafetyIssue(
                                 "stream", CheckSeverity.WARNING,
                                 "Radio stream is unreachable",
-                                "${probe.detail}. Fallback is ready: $fallbackSummary.",
+                                "${probe.detail}. Fallbacks ready: $fallbackSummary.",
                                 SafetyFix.EDIT_ALARM, "Review alarm",
                             )
                         }
@@ -314,9 +279,9 @@ object SafetyChecker {
                         "no_primary", CheckSeverity.NOTICE,
                         "No radio or local music selected",
                         if (alarm.useSystemFallback) {
-                            "Radio Alarm App will use the phone alarm sound and then its built-in sound."
+                            "Phone alarm and built-in sounds will be used."
                         } else {
-                            "Radio Alarm App will use its built-in sound."
+                            "The built-in sound will be used."
                         },
                         SafetyFix.EDIT_ALARM, "Add audio",
                     )

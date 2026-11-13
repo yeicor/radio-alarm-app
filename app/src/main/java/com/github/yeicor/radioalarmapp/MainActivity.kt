@@ -120,10 +120,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
         ReliabilityPermissions(
             exactAlarms = Permissions.canScheduleExactAlarms(context),
             notifications = Permissions.notificationsEnabled(context),
-            fullScreen = Permissions.canUseFullScreenIntent(context),
-            dndAccess = Permissions.hasDndAccess(context),
-            sleepGuard = Permissions.hasNotificationListenerAccess(context),
-            batteryOptimized = !Permissions.isBatteryOptimizationIgnored(context),
         )
     }
     val nextAlarm = remember(alarms, permissionRefresh) { viewModel.nextAlarm() }
@@ -170,10 +166,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
         when (fix) {
             SafetyFix.EXACT_ALARMS -> Permissions.openExactAlarmSettings(context)
             SafetyFix.NOTIFICATIONS -> requestNotificationPermission()
-            SafetyFix.FULL_SCREEN -> Permissions.openFullScreenIntentSettings(context)
-            SafetyFix.DND_ACCESS -> Permissions.openDndAccessSettings(context)
-            SafetyFix.SLEEP_GUARD -> Permissions.openNotificationListenerSettings(context)
-            SafetyFix.BATTERY_OPTIMIZATION -> Permissions.openBatteryOptimizationSettings(context)
             SafetyFix.EDIT_ALARM -> {
                 val target = viewModel.nextAlarm()
                 if (target != null) openEditor(target, isNew = false, duplicate = false) else showSettings = true
@@ -231,7 +223,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
                 alarms = alarms,
                 settings = settings,
                 report = report,
-                permissions = permissions,
                 checking = checking,
                 onAdd = {
                     openEditor(newAlarm(settings), isNew = true, duplicate = false)
