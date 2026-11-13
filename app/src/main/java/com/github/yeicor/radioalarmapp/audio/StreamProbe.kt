@@ -1,8 +1,8 @@
 package com.github.yeicor.radioalarmapp.audio
 
+import com.github.yeicor.radioalarmapp.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.github.yeicor.radioalarmapp.BuildConfig
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -17,11 +17,15 @@ data class StreamProbeResult(
 
 /**
  * Validates more than an HTTP status: for HLS it walks the master playlist, the media
- * playlist and fetches the first segment. That catches stale playlists and broken CDNs
- * which a simple HEAD/GET check would miss.
+ * playlist and fetches the first segment. The segment (or the first bytes of a progressive
+ * stream) is decoded for a short window, so a stream that answers but is almost silent is
+ * reported as a failure instead of a false success.
  */
 object StreamProbe {
     private val USER_AGENT = "RadioAlarmApp/${BuildConfig.VERSION_NAME} (Android alarm)"
+    private const val PLAYLIST_BYTES = 128 * 1024
+    private const val AUDIO_BYTES = 256 * 1024
+    private const val MAX_ANALYSIS_MS = 3_000
 
     suspend fun probe(url: String, timeoutMs: Int = 8_000): StreamProbeResult = withContext(Dispatchers.IO) {
         runCatching { probeBlocking(url, timeoutMs) }
@@ -36,7 +40,7 @@ object StreamProbe {
             return StreamProbeResult(false, "Use an http:// or https:// stream URL")
         }
         val deadline = System.currentTimeMillis() + timeoutMs
-        val master = fetch(trimmed, deadline, maxBytes = 128 * 1024)
+        val master = fetch(trimmed, deadline, maxBytes = PLAYLIST_BYTES)
             ?: return StreamProbeResult(false, "The stream did not respond")
         if (master.status !in 200..299) {
             return StreamProbeResult(false, "The stream returned HTTP ${master.status}", master.contentType)
@@ -57,20 +61,38 @@ object StreamProbe {
         if (type.contains("text/html") || type.contains("application/json")) {
             return StreamProbeResult(false, "The URL returned ${type.substringBefore(';')}, not audio", master.contentType)
         }
-        if (looksLikeAudio(master.sample, type)) {
+        if (!looksLikeAudio(master.sample, type)) {
             return StreamProbeResult(
-                true,
-                "Audio stream reachable (${prettyType(type)})",
+                false,
+                "Endpoint reachable but no audio frames were found",
                 master.contentType,
                 master.url,
             )
         }
-        return StreamProbeResult(
-            true,
-            "Endpoint reachable; audio will be verified during playback",
-            master.contentType,
-            master.url,
-        )
+
+        val analysis = analyze(master.sample, deadline)
+        return when {
+            analysis == null -> StreamProbeResult(
+                true,
+                "Audio stream reachable (${prettyType(type)}) · silence check unavailable",
+                master.contentType,
+                master.url,
+            )
+
+            analysis.analyzed && !analysis.audible -> StreamProbeResult(
+                false,
+                "The stream is reachable but its audio is silent",
+                master.contentType,
+                master.url,
+            )
+
+            else -> StreamProbeResult(
+                true,
+                "Audio stream reachable (${prettyType(type)}) · audio is not silent",
+                master.contentType,
+                master.url,
+            )
+        }
     }
 
     private fun probeHls(
@@ -85,7 +107,7 @@ object StreamProbe {
             val variant = firstUriAfter(body, "#EXT-X-STREAM-INF")
             if (variant != null) {
                 playlistUrl = resolve(playlistUrl, variant)
-                val variantBody = fetch(playlistUrl, deadline, maxBytes = 256 * 1024)
+                val variantBody = fetch(playlistUrl, deadline, maxBytes = AUDIO_BYTES)
                     ?: return StreamProbeResult(false, "HLS playlist did not respond", contentType)
                 if (variantBody.status !in 200..299) {
                     return StreamProbeResult(false, "HLS playlist returned HTTP ${variantBody.status}", contentType)
@@ -93,11 +115,12 @@ object StreamProbe {
                 body = variantBody.sample.toString(Charsets.UTF_8)
                 return@repeat
             }
+
             val segment = firstUriAfter(body, "#EXTINF")
                 ?: firstMediaUri(body)
                 ?: return StreamProbeResult(false, "HLS playlist contains no playable segments", contentType, playlistUrl)
             val segmentUrl = resolve(playlistUrl, segment)
-            val segmentResponse = fetch(segmentUrl, deadline, maxBytes = 4096)
+            val segmentResponse = fetch(segmentUrl, deadline, maxBytes = AUDIO_BYTES)
                 ?: return StreamProbeResult(false, "HLS audio segment did not respond", contentType, playlistUrl)
             if (segmentResponse.status !in 200..299) {
                 return StreamProbeResult(false, "HLS audio segment returned HTTP ${segmentResponse.status}", contentType, playlistUrl)
@@ -105,15 +128,67 @@ object StreamProbe {
             if (segmentResponse.sample.isEmpty()) {
                 return StreamProbeResult(false, "HLS audio segment was empty", contentType, playlistUrl)
             }
-            return StreamProbeResult(
-                true,
-                "HLS stream reachable · playlist and audio segment OK",
-                contentType,
-                playlistUrl,
-            )
+
+            val encrypted = body.lineSequence().any {
+                val line = it.trim()
+                line.startsWith("#EXT-X-KEY:") && !line.contains("METHOD=NONE")
+            }
+            if (encrypted) {
+                return StreamProbeResult(
+                    true,
+                    "HLS stream reachable · playlist and audio segment OK · encrypted (silence not verifiable)",
+                    contentType,
+                    playlistUrl,
+                )
+            }
+
+            val initBytes = mapUri(body)?.let { map ->
+                fetch(resolve(playlistUrl, map), deadline, maxBytes = AUDIO_BYTES)
+                    ?.takeIf { it.status in 200..299 }
+                    ?.sample
+            }
+            val audioBytes = if (initBytes == null || initBytes.isEmpty()) {
+                segmentResponse.sample
+            } else {
+                initBytes + segmentResponse.sample
+            }
+            val analysis = analyze(audioBytes, deadline)
+            return when {
+                analysis == null -> StreamProbeResult(
+                    true,
+                    "HLS stream reachable · playlist and audio segment OK · silence check unavailable",
+                    contentType,
+                    playlistUrl,
+                )
+
+                analysis.analyzed && !analysis.audible -> StreamProbeResult(
+                    false,
+                    "The HLS stream is reachable but its audio is silent",
+                    contentType,
+                    playlistUrl,
+                )
+
+                else -> StreamProbeResult(
+                    true,
+                    "HLS stream reachable · audio is not silent",
+                    contentType,
+                    playlistUrl,
+                )
+            }
         }
         return StreamProbeResult(false, "HLS playlist could not be resolved", contentType, playlistUrl)
     }
+
+    private fun analyze(bytes: ByteArray, deadline: Long): AudioSampleAnalyzer.Result? {
+        val remaining = (deadline - System.currentTimeMillis()).coerceAtMost(MAX_ANALYSIS_MS.toLong())
+        if (remaining < 500L) return null
+        return runCatching { AudioSampleAnalyzer.analyze(bytes, remaining.toInt()) }.getOrNull()
+    }
+
+    private fun mapUri(body: String): String? = body.lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("#EXT-X-MAP:") }
+        ?.let { line -> Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.getOrNull(1) }
 
     private fun firstUriAfter(body: String, tag: String): String? {
         val lines = body.lineSequence().map { it.trim() }.toList()
@@ -168,7 +243,7 @@ object StreamProbe {
             }
             val sample = runCatching {
                 stream.use { input ->
-                    val buffer = ByteArray(maxBytes.coerceAtMost(16 * 1024))
+                    val buffer = ByteArray(maxBytes.coerceIn(4 * 1024, 512 * 1024))
                     var total = 0
                     while (total < buffer.size) {
                         val read = input.read(buffer, total, buffer.size - total)

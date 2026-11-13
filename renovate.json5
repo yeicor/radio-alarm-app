@@ -1,10 +1,33 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": ["config:recommended", "config:best-practices"],
   "labels": ["dependencies"],
+
+  // Merge dependency branches directly into main once CI is green, without opening PRs.
+  "automerge": true,
+  "automergeType": "branch",
+  "platformAutomerge": false,
+  "rebaseWhen": "behind-base-branch",
+  "internalChecksFilter": "strict",
+
+  // Keep the dependency dashboard and security maintenance running in the background.
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": false,
+  "minimumReleaseAge": "3 days",
+  "pinDigests": true,
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "automerge": true
+  },
+
   "packageRules": [
     {
-      // One PR for the whole AndroidX stack (including Compose).
+      // One branch for the whole AndroidX stack (including Compose).
       "groupName": "AndroidX",
       "matchPackageNames": ["/^androidx\\./"]
     },
@@ -24,6 +47,11 @@
     {
       "groupName": "Gradle wrapper",
       "matchManagers": ["gradle-wrapper"]
+    },
+    {
+      // Major updates are automated too; CI (unit, lint and emulator tests) is the gate.
+      "matchUpdateTypes": ["major"],
+      "automerge": true
     }
   ]
 }

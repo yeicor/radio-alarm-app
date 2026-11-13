@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.BatteryManager
+import com.github.yeicor.radioalarmapp.audio.AudioSampleAnalyzer
 import com.github.yeicor.radioalarmapp.audio.LocalAudio
 import com.github.yeicor.radioalarmapp.audio.StreamProbe
 import com.github.yeicor.radioalarmapp.data.Alarm
@@ -236,34 +237,58 @@ object SafetyChecker {
                     }
                 }
 
-                val local = LocalAudio.resolve(context, alarm, repo.settings.value)
-                if (alarm.localFallbackUris.isNotEmpty() || repo.settings.value.fallbackFolderUri != null) {
-                    if (local.isEmpty()) {
+                val localConfigured = alarm.localFallbackUris.isNotEmpty() ||
+                    repo.settings.value.fallbackFolderUri != null
+                val localCandidates = if (localConfigured) {
+                    // Only a few candidates are inspected; a folder with thousands of
+                    // songs is never enumerated during the periodic check.
+                    LocalAudio.candidates(context, alarm, repo.settings.value, limit = 3)
+                } else {
+                    emptyList()
+                }
+                var localReady = false
+                var localSilent = false
+                if (localConfigured) {
+                    for (candidate in localCandidates) {
+                        val analysis = AudioSampleAnalyzer.analyze(context, candidate.uri, timeoutMs = 2_000)
+                        if (!analysis.readable) continue
+                        if (analysis.analyzed && !analysis.audible) {
+                            localSilent = true
+                            continue
+                        }
+                        localReady = true
+                        break
+                    }
+                    if (!localReady) {
                         issues += SafetyIssue(
                             "local_backup", CheckSeverity.WARNING,
-                            "Local backup is unavailable",
-                            "The selected files or folder cannot be read. " +
-                                if (alarm.useSystemFallback) {
-                                    "Phone alarm and built-in sounds remain."
-                                } else {
-                                    "The built-in sound remains."
-                                },
+                            if (localSilent) "Local backup is silent" else "Local backup is unavailable",
+                            if (localSilent) {
+                                "The selected audio decodes to silence. Check the files or pick another folder."
+                            } else {
+                                "The selected files or folder cannot be read. " +
+                                    if (alarm.useSystemFallback) {
+                                        "Phone alarm and built-in sounds remain."
+                                    } else {
+                                        "The built-in sound remains."
+                                    }
+                            },
                             SafetyFix.EDIT_ALARM, "Review backup audio",
                         )
                     }
                 }
 
                 val fallbackParts = buildList {
-                    if (local.isNotEmpty()) add("${local.size} local track${if (local.size == 1) "" else "s"}")
+                    if (localReady) add("local backup")
                     if (alarm.useSystemFallback) add("phone alarm sound")
-                    add("built-in Radio Alarm App sound")
+                    add("built-in sound")
                 }
                 val fallbackSummary = fallbackParts.joinToString(", ")
 
                 var streamReachable: Boolean? = null
                 if (alarm.streamUrl.isNotBlank()) {
                     if (checkStream) {
-                        val probe = StreamProbe.probe(alarm.streamUrl, 7_000)
+                        val probe = StreamProbe.probe(alarm.streamUrl, 8_000)
                         streamReachable = probe.ok
                         if (!probe.ok) {
                             issues += SafetyIssue(
@@ -274,7 +299,7 @@ object SafetyChecker {
                             )
                         }
                     }
-                } else if (local.isEmpty()) {
+                } else if (!localReady) {
                     issues += SafetyIssue(
                         "no_primary", CheckSeverity.NOTICE,
                         "No radio or local music selected",
@@ -299,7 +324,7 @@ object SafetyChecker {
                     alarmVolumePercent = alarmVolume.percent,
                     alarmVolumeMuted = alarmVolume.muted,
                     streamReachable = streamReachable,
-                    localFallbackCount = local.size,
+                    localFallbackCount = if (localReady) localCandidates.size else 0,
                     fallbackSummary = fallbackSummary,
                     issues = issues.sortedByDescending { it.severity },
                 )

@@ -86,11 +86,7 @@ class AlarmWidgetProvider : AppWidgetProvider() {
 
             val (alarm, target) = next
             val override = AlarmOverrides.get(context, alarm.id)
-            val shiftMinutes = if (override?.kind == com.github.yeicor.radioalarmapp.data.OverrideKind.SHIFT) {
-                ((override.effectiveAt - override.naturalAt) / 60_000L).toInt()
-            } else {
-                0
-            }
+            val shiftMinutes = override?.offsetMinutes ?: 0
             val day = when (target.toLocalDate()) {
                 now.toLocalDate() -> context.getString(R.string.widget_today)
                 now.toLocalDate().plusDays(1) -> context.getString(R.string.widget_tomorrow)

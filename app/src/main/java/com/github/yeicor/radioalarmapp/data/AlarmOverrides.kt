@@ -13,6 +13,10 @@ enum class OverrideKind { SHIFT, SKIP }
  * A one-shot change made from the home-screen widget. It replaces the next natural
  * occurrence of one alarm and is consumed when that occurrence fires (or when the user
  * undoes a skip).
+ *
+ * [offsetMinutes] is the shift applied on top of the target occurrence. It is stored
+ * separately from [naturalAt] so a skip followed by +10 minutes still shows +10, not the
+ * whole distance to the skipped-to day.
  */
 data class AlarmOverride(
     val alarmId: Long,
@@ -25,6 +29,8 @@ data class AlarmOverride(
     val skippedAt: Long = 0L,
     /** For SKIP: the schedule to restore if the user presses undo. */
     val previousEffectiveAt: Long = 0L,
+    /** Minutes added to the target occurrence (can be negative). */
+    val offsetMinutes: Int = 0,
 )
 
 object AlarmOverrides {
@@ -38,16 +44,27 @@ object AlarmOverrides {
             buildList {
                 for (i in 0 until array.length()) {
                     val json = array.optJSONObject(i) ?: continue
+                    val kind = runCatching {
+                        OverrideKind.valueOf(json.optString("kind"))
+                    }.getOrDefault(OverrideKind.SHIFT)
+                    val naturalAt = json.optLong("naturalAt")
+                    val effectiveAt = json.optLong("effectiveAt")
+                    val offsetMinutes = if (json.has("offsetMinutes")) {
+                        json.optInt("offsetMinutes")
+                    } else if (kind == OverrideKind.SHIFT) {
+                        ((effectiveAt - naturalAt) / 60_000L).toInt()
+                    } else {
+                        0
+                    }
                     add(
                         AlarmOverride(
                             alarmId = json.optLong("alarmId"),
-                            naturalAt = json.optLong("naturalAt"),
-                            effectiveAt = json.optLong("effectiveAt"),
-                            kind = runCatching {
-                                OverrideKind.valueOf(json.optString("kind"))
-                            }.getOrDefault(OverrideKind.SHIFT),
+                            naturalAt = naturalAt,
+                            effectiveAt = effectiveAt,
+                            kind = kind,
                             skippedAt = json.optLong("skippedAt"),
                             previousEffectiveAt = json.optLong("previousEffectiveAt"),
+                            offsetMinutes = offsetMinutes,
                         ),
                     )
                 }
@@ -103,7 +120,11 @@ object AlarmOverrides {
             }
             .minByOrNull { it.second }
 
-    /** Adds or subtracts minutes from the currently effective next occurrence. */
+    /**
+     * Adds or subtracts minutes from the currently effective next occurrence. An existing
+     * skip is preserved, and the stored offset stays relative to the skipped-to occurrence
+     * so the widget does not display a huge multi-day shift.
+     */
     fun shift(
         context: Context,
         alarm: Alarm,
@@ -111,20 +132,32 @@ object AlarmOverrides {
         now: ZonedDateTime = ZonedDateTime.now(),
     ): Boolean {
         val current = effectiveOccurrence(context, alarm, now) ?: return false
-        val natural = alarm.nextOccurrence(now) ?: return false
-        val target = current.plusMinutes(minutes.toLong())
-        if (target.toInstant().toEpochMilli() <= now.toInstant().toEpochMilli() + 30_000L) {
-            return false
+        val nowMs = now.toInstant().toEpochMilli()
+        val targetMs = current.plusMinutes(minutes.toLong()).toInstant().toEpochMilli()
+        if (targetMs <= nowMs + 30_000L) return false
+
+        val existing = get(context, alarm.id)?.takeIf { it.effectiveAt > nowMs }
+        if (existing != null) {
+            put(
+                context,
+                existing.copy(
+                    effectiveAt = targetMs,
+                    offsetMinutes = existing.offsetMinutes + minutes,
+                ),
+            )
+        } else {
+            val natural = alarm.nextOccurrence(now) ?: return false
+            put(
+                context,
+                AlarmOverride(
+                    alarmId = alarm.id,
+                    naturalAt = natural.toInstant().toEpochMilli(),
+                    effectiveAt = targetMs,
+                    kind = OverrideKind.SHIFT,
+                    offsetMinutes = minutes,
+                ),
+            )
         }
-        put(
-            context,
-            AlarmOverride(
-                alarmId = alarm.id,
-                naturalAt = natural.toInstant().toEpochMilli(),
-                effectiveAt = target.toInstant().toEpochMilli(),
-                kind = OverrideKind.SHIFT,
-            ),
-        )
         return true
     }
 
@@ -180,23 +213,25 @@ object AlarmOverrides {
         now: ZonedDateTime = ZonedDateTime.now(),
     ): Boolean {
         val override = get(context, alarm.id) ?: return false
-        if (override.kind != OverrideKind.SKIP ||
-            override.skippedAt <= now.toInstant().toEpochMilli()
-        ) {
+        val nowMs = now.toInstant().toEpochMilli()
+        if (override.kind != OverrideKind.SKIP || override.skippedAt <= nowMs) {
             return false
         }
-        if (override.previousEffectiveAt == override.naturalAt ||
-            override.previousEffectiveAt <= now.toInstant().toEpochMilli()
-        ) {
+        val restoreMs = override.previousEffectiveAt
+        if (restoreMs <= nowMs) return false
+
+        val naturalMs = alarm.nextOccurrence(now)?.toInstant()?.toEpochMilli() ?: return false
+        if (restoreMs == naturalMs) {
             remove(context, alarm.id)
         } else {
             put(
                 context,
                 AlarmOverride(
                     alarmId = alarm.id,
-                    naturalAt = override.naturalAt,
-                    effectiveAt = override.previousEffectiveAt,
+                    naturalAt = naturalMs,
+                    effectiveAt = restoreMs,
                     kind = OverrideKind.SHIFT,
+                    offsetMinutes = ((restoreMs - naturalMs) / 60_000L).toInt(),
                 ),
             )
         }
@@ -214,6 +249,7 @@ object AlarmOverrides {
                     put("kind", override.kind.name)
                     put("skippedAt", override.skippedAt)
                     put("previousEffectiveAt", override.previousEffectiveAt)
+                    put("offsetMinutes", override.offsetMinutes)
                 },
             )
         }

@@ -12,33 +12,36 @@ output, ramps its own player volume, and falls back through local audio, the pho
 sound and a bundled sound.
 
 - Package: `com.github.yeicor.radioalarmapp`
-- Version: 0.0.2 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
+- Version: 0.0.3 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
 - Repository: <https://github.com/yeicor/radio-alarm-app>
 
 ## Features
 
 - **Radio alarms** – HLS (`.m3u8`), MP3, AAC and Ogg streams. A SomaFM example is pre-filled
   when creating an alarm.
-- **Real audio verification** – player state, the alarm stream's active playback configuration
-  and the actual alarm volume are checked continuously. A source is only marked verified when
-  audio is genuinely playing.
-- **Retries and fallback** – 3 stream attempts in total, then local files/folder, then the
-  phone's alarm sound, then a bundled sound that works offline.
+- **Real audio verification** – player state, the alarm stream's active playback configuration,
+  the actual alarm volume and the decoded PCM level are checked continuously. A source is only
+  marked verified when it is genuinely producing non-silent sound.
+- **Silence fails over** – a source that produces no audible samples for 10 seconds is treated
+  as broken, so a radio that answers but plays silence never counts as success.
+- **Retries and fallback** – 3 stream attempts in total, then up to 30 local tracks (tried
+  quickly), then the phone's alarm sound, then a bundled sound that works offline.
 - **Volume ramp** – configurable 0–180 s ramp of the app's own player volume from 0% to 100%.
   The phone's alarm-stream volume is never changed; a muted stream is unmuted so the alarm can
   be heard.
 - **Alarm-volume warnings** – muted/zero is critical and below 30% is a warning, shown
   immediately after saving or enabling an alarm and by the automatic checks.
 - **Snooze** – 1–30 minutes and 0–5 snoozes per alarm, persisted across reboots.
-- **Widget** – a small card with the next alarm, an alarm icon and three icon buttons:
-  `−10 min`, `skip` and `+10 min`; after a skip the middle button becomes `undo`. The app shows
-  the effective time plus the original time when the widget changed it.
+- **Widget** – a compact 3×1 row with the next alarm, an alarm icon and three icon buttons:
+  `−10 min`, `skip` and `+10 min`; after a skip the middle button becomes `undo`. Mixing a skip
+  with an offset keeps the skip and shows only the small offset.
 - **Exact alarms** – `AlarmManager.setAlarmClock`, direct-boot-aware, restored after reboot,
   time change, timezone change and app update.
 - **Full-screen wake-up** – lock-screen activity with snooze/dismiss, also available from the
   notification.
 - **Automatic checks** – a low-power WorkManager job runs about ten times a day, verifies the
-  next alarm and sends a notification when something needs attention.
+  next alarm (including a non-silent stream and one playable local track) and sends a
+  notification when something needs attention.
 - **Duplicate & adjust** – duplicate an alarm from its overflow menu and change only what you
   need.
 - **Device-protected storage** – alarms and snoozes survive a reboot before first unlock.
@@ -85,8 +88,9 @@ Tap the **?** next to a section for a short explanation instead of a wall of tex
 
 ## Home-screen widget
 
-Add the widget from your launcher's widget list. It shows an alarm icon, the next alarm in
-short form (for example `07:30 · Tomorrow`, plus `+10m` when shifted) and three buttons:
+Add the widget from your launcher's widget list. It asks for a 3×1 space and shows an alarm
+icon, the next alarm in short form (for example `07:30 · Tomorrow`, plus `+10m` when shifted)
+and three compact buttons:
 
 | Button | Action |
 | --- | --- |
@@ -96,17 +100,20 @@ short form (for example `07:30 · Tomorrow`, plus `+10m` when shifted) and three
 | `<<` | Undo the skip, shown instead of `>>` until the skipped time has passed |
 
 Overrides are one-shot: they are consumed when the alarm fires or when it is edited,
-re-enabled or deleted. Tapping the text opens the app; with no enabled alarm the widget shows
-"No alarm set" and hides the buttons.
+re-enabled or deleted. A skip followed by `+`/`−` keeps the skip and applies the offset to the
+skipped-to occurrence, so it never jumps an extra day or displays a multi-day offset. Tapping
+the text opens the app; with no enabled alarm the widget shows "No alarm set" and hides the
+buttons.
 
 ## What happens when an alarm fires
 
 1. The exact alarm fires and the foreground alarm service starts with a wake lock.
 2. The ringing notification opens the full-screen alarm over the lock screen.
 3. The app unmutes the alarm stream if needed, then plays the radio while its player volume
-   ramps from 0% to 100% of the configured alarm volume. Playback is verified; failures are
-   retried twice.
-4. If the radio still fails, local files/folder audio is tried in order.
+   ramps from 0% to 100% of the configured alarm volume. Decoded PCM is checked continuously;
+   silence for 10 seconds or a playback error counts as a failure, and failures are retried
+   twice.
+4. If the radio still fails, up to 30 local tracks are tried quickly.
 5. Then the phone's alarm sound (if enabled for that alarm), using the platform `Ringtone` API
    and the same ramp.
 6. Finally the bundled sound. If even that fails, the app keeps retrying rather than giving
@@ -121,8 +128,9 @@ it checks:
 - exact-alarm and notification permission;
 - alarm volume (muted/zero critical, below 30% warning);
 - battery level and charging state;
-- radio reachability, with the available fallbacks;
-- readability of the configured local backups.
+- radio reachability and whether a decoded audio sample is actually non-silent;
+- one playable, non-silent local track (a folder with thousands of songs is sampled, never
+  fully enumerated).
 
 Results appear in the app and, when something is wrong, as a high-priority notification. The
 same check runs when you save or enable an alarm.

@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -30,6 +31,8 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.github.yeicor.radioalarmapp.BuildConfig
 import com.github.yeicor.radioalarmapp.audio.LocalAudio
 import com.github.yeicor.radioalarmapp.audio.ResolvedAudio
+import com.github.yeicor.radioalarmapp.audio.SilenceMonitor
+import com.github.yeicor.radioalarmapp.audio.SilenceRenderersFactory
 import com.github.yeicor.radioalarmapp.data.Alarm
 import com.github.yeicor.radioalarmapp.data.AlarmRepository
 import com.github.yeicor.radioalarmapp.data.RadioAlarmPrefs
@@ -44,6 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 enum class AudioTier { STREAM, LOCAL, SYSTEM, EMBEDDED }
@@ -72,6 +76,7 @@ class AlarmService : Service() {
         private const val KEY_ACTIVE_STARTED = "active_alarm_started"
 
         private const val TAG = "RadioAlarmApp"
+        private const val SILENCE_LIMIT_MS = 10_000L
 
         @Volatile
         var isRunning: Boolean = false
@@ -116,6 +121,8 @@ class AlarmService : Service() {
     private var watchdogJob: Job? = null
     private var switching = false
     private var sourceStartedAt = 0L
+    private var sourceStartedElapsed = 0L
+    private val silenceMonitor = SilenceMonitor()
     private var lastVerified = false
     private var lastStatus = ""
     private var consecutiveFailures = 0
@@ -248,6 +255,7 @@ class AlarmService : Service() {
         val dataSource = DefaultDataSource.Factory(this, http)
         val mediaSource = DefaultMediaSourceFactory(dataSource)
         player = ExoPlayer.Builder(this)
+            .setRenderersFactory(SilenceRenderersFactory(this, silenceMonitor))
             .setMediaSourceFactory(mediaSource)
             .build()
             .apply {
@@ -296,7 +304,12 @@ class AlarmService : Service() {
 
     private fun beginFallbackChain() {
         val current = alarm ?: return
-        localSources = LocalAudio.resolve(this, current, repository.settings.value)
+        localSources = LocalAudio.candidates(
+            this,
+            current,
+            repository.settings.value,
+            limit = LocalAudio.MAX_LOCAL_ATTEMPTS,
+        )
         systemSources = if (current.useSystemFallback) {
             LocalAudio.systemSources(this, repository.settings.value)
         } else {
@@ -366,6 +379,8 @@ class AlarmService : Service() {
             systemRingtone = ringtone
             ringtone.play()
             sourceStartedAt = System.currentTimeMillis()
+            sourceStartedElapsed = SystemClock.elapsedRealtime()
+            silenceMonitor.reset()
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
                 systemLoopJob = scope.launch {
                     while (isActive && currentTier == AudioTier.SYSTEM) {
@@ -402,6 +417,8 @@ class AlarmService : Service() {
             player.prepare()
             player.playWhenReady = true
             sourceStartedAt = System.currentTimeMillis()
+            sourceStartedElapsed = SystemClock.elapsedRealtime()
+            silenceMonitor.reset()
         }.onFailure {
             Log.e(TAG, "Could not start $label", it)
             handleSourceFailure("Could not open $label")
@@ -439,7 +456,11 @@ class AlarmService : Service() {
                     .getOrDefault(false)
                 val volumeOk = streamVolume > 0 && !streamMuted && currentVolume > 0.01f
                 val playbackActive = isAlarmPlaybackActive()
-                val verifiedNow = sourcePlaying && playbackActive && volumeOk
+                val nowElapsed = SystemClock.elapsedRealtime()
+                val silenceReference = max(silenceMonitor.lastAudibleAtMs, sourceStartedElapsed)
+                val silentFor = nowElapsed - silenceReference
+                val audibleRecently = currentTier == AudioTier.SYSTEM || silentFor <= 2_000L
+                val verifiedNow = sourcePlaying && playbackActive && volumeOk && audibleRecently
                 if (!verifiedNow && consecutiveFailures % 3 == 0) {
                     Log.d(
                         TAG,
@@ -459,6 +480,10 @@ class AlarmService : Service() {
                         true,
                     )
                     updateNotification("Audio verified • ${lambdaLabel()}")
+                }
+                if (currentTier != AudioTier.SYSTEM && silentFor > SILENCE_LIMIT_MS) {
+                    handleSourceFailure("No audible audio for 10 s")
+                    return@launch
                 }
                 if (!verifiedNow) {
                     consecutiveFailures++

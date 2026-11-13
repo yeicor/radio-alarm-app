@@ -408,7 +408,7 @@ private fun SafetyHero(
                         append("Checked ${relativeTime(report.checkedAt)}")
                         report.batteryPercent?.let { append(" · Battery $it%") }
                         report.streamReachable?.let { append(if (it) " · Radio OK" else " · Radio down") }
-                        append(" · ${report.localFallbackCount} local")
+                        if (report.localFallbackCount > 0) append(" · local backup")
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
