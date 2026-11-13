@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">Radio Alarm App</string>
+    <string name="sleep_guard_name">Radio Alarm App Sleep Guard</string>
+    <string name="alarm_channel_name">Ringing alarms</string>
+    <string name="alarm_channel_description">Full-screen alarms and playback controls</string>
+    <string name="safety_channel_name">Sleep safety alerts</string>
+    <string name="safety_channel_description">Problems that could affect your next alarm</string>
+    <string name="service_channel_name">Alarm playback</string>
+    <string name="service_channel_description">Keeps alarm audio running reliably</string>
+    <string name="notification_snooze">Snooze</string>
+    <string name="notification_dismiss">Dismiss</string>
+    <string name="ring_dismiss">I\'m awake</string>
+    <string name="ring_snooze">Snooze %1$d min</string>
+    <string name="ring_test">TEST ALARM</string>
+    <string name="ring_alarm">WAKE UP</string>
+    <string name="ring_starting">Starting audio…</string>
+    <string name="ring_verified">Audio verified</string>
+    <string name="ring_retrying">Checking audio…</string>
+    <string name="ring_snoozes_left">Snooze %1$d of %2$d</string>
+    <string name="notification_snoozes_left">%1$d snoozes left</string>
+    <string name="widget_description">Next alarm with quick delay and skip buttons</string>
+    <string name="widget_no_alarm">No alarm set</string>
+    <string name="widget_today">Today</string>
+    <string name="widget_tomorrow">Tomorrow</string>
+</resources>

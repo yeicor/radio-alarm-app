@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.RadioAlarmApp" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">@color/ring_background</item>
+        <item name="android:statusBarColor">@color/ring_background</item>
+        <item name="android:navigationBarColor">@color/ring_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorAccent">#FFB55C</item>
+    </style>
+
+    <style name="Theme.RadioAlarmApp.Ring" parent="Theme.RadioAlarmApp">
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowBackground">@color/ring_background</item>
+    </style>
+</resources>
