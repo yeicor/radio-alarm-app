@@ -213,6 +213,11 @@ object UpdateChecker {
             }
         }
 
+        // 1. First check if a rolling nightly release exists on GitHub with direct APK download
+        val directReleaseInfo = checkNightlyRelease(context, stablePublishedAt, stableTag)
+        if (directReleaseInfo != null) return directReleaseInfo
+
+        // 2. Fall back to CI workflow artifacts via nightly.link
         val url = URL("https://api.github.com/repos/$OWNER/$REPO/actions/artifacts?name=radio-alarm-app-debug&per_page=5")
         val conn = url.openConnection() as HttpURLConnection
         conn.setRequestProperty("Accept", "application/vnd.github+json")
@@ -255,6 +260,53 @@ object UpdateChecker {
                 val dismissed = isDismissed(context, label)
                 return UpdateInfo(UpdateChannel.NIGHTLY, label, downloadUrl, isNewer && !dismissed)
             }
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun checkNightlyRelease(
+        context: Context,
+        stablePublishedAt: Long,
+        stableTag: String?,
+    ): UpdateInfo? {
+        val url = URL("https://api.github.com/repos/$OWNER/$REPO/releases/tags/nightly")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        conn.setRequestProperty("User-Agent", "RadioAlarmApp/${BuildConfig.VERSION_NAME}")
+        conn.connectTimeout = 8_000
+        conn.readTimeout = 8_000
+        return try {
+            if (conn.responseCode != 200) return null
+            val json = JSONObject(conn.inputStream.bufferedReader().readText())
+            val publishedAt = json.optString("published_at", "")
+            val publishedAtMs = parseIsoDate(publishedAt)
+            val commitSha = json.optString("target_commitish", "")
+            val assets = json.optJSONArray("assets") ?: return null
+            var apkUrl: String? = null
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.optString("name", "")
+                if (name.endsWith(".apk")) {
+                    apkUrl = asset.optString("browser_download_url", "")
+                    break
+                }
+            }
+            if (apkUrl.isNullOrBlank()) return null
+            val label = "nightly (${publishedAt.take(10)})"
+            val isNewer = isNightlyNewer(
+                artifactCreatedAtMs = publishedAtMs,
+                artifactHeadSha = commitSha,
+                localBuildTimeMs = BuildConfig.BUILD_TIME,
+                localGitCommitSha = BuildConfig.GIT_COMMIT_SHA,
+                latestStablePublishedAtMs = stablePublishedAt,
+                localVersionName = BuildConfig.VERSION_NAME,
+                latestStableTag = stableTag ?: BuildConfig.VERSION_NAME,
+            )
+            val dismissed = isDismissed(context, label)
+            UpdateInfo(UpdateChannel.NIGHTLY, label, apkUrl, isNewer && !dismissed)
+        } catch (_: Throwable) {
             null
         } finally {
             conn.disconnect()

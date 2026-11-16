@@ -50,6 +50,13 @@ android {
                 "proguard-rules.pro",
             )
         }
+        debug {
+            // When release keystore is provided (e.g. in CI), sign debug with it so nightly and
+            // stable builds share the exact same cryptographic key.
+            signingConfigs.findByName("release")?.let {
+                signingConfig = it
+            }
+        }
     }
 
     compileOptions {

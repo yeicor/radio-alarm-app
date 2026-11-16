@@ -507,7 +507,11 @@ private fun UpdateBanner(
                         color = TextPrimary,
                     )
                     Text(
-                        if (updateInfo.channel == UpdateChannel.STABLE) "Official stable release" else "Nightly CI build (direct via nightly.link)",
+                        when {
+                            updateInfo.channel == UpdateChannel.STABLE -> "Official stable release"
+                            updateInfo.downloadUrl.endsWith(".apk") -> "Nightly build from main (direct APK)"
+                            else -> "Nightly CI build from main"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                     )

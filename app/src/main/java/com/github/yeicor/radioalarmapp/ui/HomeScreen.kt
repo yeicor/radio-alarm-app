@@ -429,7 +429,11 @@ private fun HomeUpdateBanner(
                     color = TextPrimary,
                 )
                 Text(
-                    if (updateInfo.channel == UpdateChannel.STABLE) "Official release · Tap to download" else "Nightly build · Direct via nightly.link",
+                    when {
+                        updateInfo.channel == UpdateChannel.STABLE -> "Official release · Tap to download"
+                        updateInfo.downloadUrl.endsWith(".apk") -> "Nightly build · Direct APK download"
+                        else -> "Nightly build · Tap to download"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                 )
