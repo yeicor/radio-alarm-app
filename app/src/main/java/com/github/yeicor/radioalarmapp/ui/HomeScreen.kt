@@ -1,5 +1,8 @@
 package com.github.yeicor.radioalarmapp.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +29,7 @@ import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
@@ -37,8 +41,11 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -70,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.github.yeicor.radioalarmapp.alarm.CheckSeverity
+import com.github.yeicor.radioalarmapp.alarm.PlaybackSnapshot
 import com.github.yeicor.radioalarmapp.alarm.SafetyFix
 import com.github.yeicor.radioalarmapp.alarm.SafetyIssue
 import com.github.yeicor.radioalarmapp.alarm.SafetyReport
@@ -88,6 +96,7 @@ import com.github.yeicor.radioalarmapp.ui.theme.SunriseSoft
 import com.github.yeicor.radioalarmapp.ui.theme.TextPrimary
 import com.github.yeicor.radioalarmapp.ui.theme.TextSecondary
 import com.github.yeicor.radioalarmapp.ui.theme.Warning
+import com.github.yeicor.radioalarmapp.update.UpdateInfo
 import com.github.yeicor.radioalarmapp.util.TimeText
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -109,6 +118,10 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onRunCheck: () -> Unit,
     onFix: (SafetyFix) -> Unit,
+    playback: PlaybackSnapshot? = null,
+    onStopTest: () -> Unit = {},
+    updateInfo: UpdateInfo? = null,
+    onDismissUpdate: (UpdateInfo) -> Unit = {},
 ) {
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     var deleteTarget by remember { mutableStateOf<Alarm?>(null) }
@@ -142,6 +155,20 @@ fun HomeScreen(
         ) {
             item { HomeHeader(onSettings) }
 
+            if (updateInfo != null && updateInfo.isNewer) {
+                item {
+                    HomeUpdateBanner(
+                        updateInfo = updateInfo,
+                        onUpdate = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            runCatching { context.startActivity(intent) }
+                        },
+                        onDismiss = { onDismissUpdate(updateInfo) },
+                    )
+                }
+            }
+
             if (next != null) {
                 item {
                     NextAlarmCard(
@@ -152,6 +179,8 @@ fun HomeScreen(
                         report = report,
                         onClick = { onEdit(next.first) },
                         onRunCheck = onRunCheck,
+                        playback = playback,
+                        onStopTest = onStopTest,
                         checking = checking,
                     )
                 }
@@ -165,6 +194,8 @@ fun HomeScreen(
                         report = report,
                         onFix = onFix,
                         onRunCheck = onRunCheck,
+                        playback = playback,
+                        onStopTest = onStopTest,
                         checking = checking,
                     )
                 }
@@ -297,6 +328,8 @@ private fun NextAlarmCard(
     report: SafetyReport?,
     onClick: () -> Unit,
     onRunCheck: () -> Unit,
+    playback: PlaybackSnapshot?,
+    onStopTest: () -> Unit,
     checking: Boolean,
 ) {
     GradientCard(
@@ -379,18 +412,68 @@ private fun NextAlarmCard(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     when {
+                        playback != null -> "Playing test alarm…"
                         report == null -> "Not checked yet"
                         report.isReady -> "Last check passed"
                         report.criticalCount > 0 -> "${report.criticalCount} critical"
                         else -> "${report.warningCount} warning${if (report.warningCount == 1) "" else "s"}"
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (report?.isReady == true) Mint else TextSecondary,
+                    color = if (playback != null) Mint else if (report?.isReady == true) Mint else TextSecondary,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRunCheck, enabled = !checking) {
-                    Text(if (checking) "Checking…" else "Check", color = SunriseSoft)
+                TextButton(
+                    onClick = {
+                        if (playback != null) onStopTest() else onRunCheck()
+                    },
+                ) {
+                    Text(
+                        if (playback != null) "Stop test" else "Test alarm",
+                        color = if (playback != null) Coral else SunriseSoft,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeUpdateBanner(
+    updateInfo: UpdateInfo,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        color = Sunrise.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Sunrise.copy(alpha = 0.35f)),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = Sunrise, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Update available: ${updateInfo.versionLabel}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                )
+                Text(
+                    "Tap to download & install",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+            }
+            TextButton(onClick = onUpdate) {
+                Text("Update", color = Sunrise, fontWeight = FontWeight.Bold)
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = TextSecondary, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -422,6 +505,8 @@ private fun SafetySummaryCard(
     report: SafetyReport,
     onFix: (SafetyFix) -> Unit,
     onRunCheck: () -> Unit,
+    playback: PlaybackSnapshot?,
+    onStopTest: () -> Unit,
     checking: Boolean,
 ) {
     val top = report.issues.filter { it.severity >= CheckSeverity.WARNING }.take(2)
@@ -435,8 +520,16 @@ private fun SafetySummaryCard(
                     color = TextPrimary,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRunCheck, enabled = !checking) {
-                    Text(if (checking) "Checking…" else "Refresh", color = Sunrise)
+                TextButton(
+                    onClick = {
+                        if (playback != null) onStopTest() else onRunCheck()
+                    },
+                ) {
+                    Text(
+                        if (playback != null) "Stop test" else "Test alarm",
+                        color = if (playback != null) Coral else Sunrise,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
             top.forEach { issue ->

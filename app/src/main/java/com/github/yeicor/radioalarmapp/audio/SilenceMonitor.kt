@@ -23,6 +23,16 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
     var lastAudibleAtMs: Long = 0L
         private set
 
+    @Volatile
+    var currentRms: Float = 0f
+        private set
+
+    @Volatile
+    var volumeFactor: Float = 1f
+
+    @Volatile
+    var threshold: Float = AudioSignal.SILENCE_RMS
+
     private var encoding = AudioFormat.ENCODING_PCM_16BIT
 
     override fun flush(sampleRateHz: Int, channelCount: Int, encoding: Int) {
@@ -30,13 +40,17 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
     }
 
     override fun handleBuffer(buffer: ByteBuffer) {
-        if (AudioSignal.isAudible(AudioSignal.rms(buffer, encoding))) {
+        val r = AudioSignal.rms(buffer, encoding)
+        currentRms = if (currentRms == 0f) r else (currentRms * 0.7f + r * 0.3f)
+        val effectiveRms = r * volumeFactor
+        if (AudioSignal.isAudible(effectiveRms, threshold)) {
             lastAudibleAtMs = SystemClock.elapsedRealtime()
         }
     }
 
     fun reset() {
         lastAudibleAtMs = 0L
+        currentRms = 0f
     }
 }
 

@@ -1,5 +1,6 @@
 package com.github.yeicor.radioalarmapp.data
 
+import com.github.yeicor.radioalarmapp.update.UpdateChannel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.DayOfWeek
@@ -24,6 +25,7 @@ data class Alarm(
     val maxSnoozes: Int = 3,
     val vibrate: Boolean = true,
     val useSystemFallback: Boolean = true,
+    val volumePercent: Int = 100,
     val createdAt: Long = 0L,
 ) {
     val isOneTime: Boolean get() = repeatDays.isEmpty()
@@ -67,6 +69,7 @@ data class Alarm(
         put("maxSnoozes", maxSnoozes)
         put("vibrate", vibrate)
         put("useSystemFallback", useSystemFallback)
+        put("volumePercent", volumePercent)
         put("createdAt", createdAt)
     }
 
@@ -102,6 +105,7 @@ data class Alarm(
                 maxSnoozes = json.optInt("maxSnoozes", 3).coerceIn(0, 10),
                 vibrate = json.optBoolean("vibrate", true),
                 useSystemFallback = json.optBoolean("useSystemFallback", true),
+                volumePercent = json.optInt("volumePercent", 100).coerceIn(0, 100),
                 createdAt = json.optLong("createdAt", 0L),
             )
         }
@@ -119,6 +123,9 @@ data class AppSettings(
     val defaultVibrate: Boolean = true,
     val fallbackFolderUri: String? = null,
     val systemAlarmSoundUri: String? = null,
+    val softwareVolumePercent: Int = 100,     // 0–100, applied as software multiplier
+    val silenceThresholdPercent: Int = 50,    // % of SILENCE_RMS used as audibility threshold
+    val updateChannel: UpdateChannel = UpdateChannel.STABLE,
 )
 
 fun Alarm.withDefaults(settings: AppSettings): Alarm = copy(
@@ -126,4 +133,5 @@ fun Alarm.withDefaults(settings: AppSettings): Alarm = copy(
     snoozeMinutes = settings.defaultSnoozeMinutes,
     maxSnoozes = settings.defaultMaxSnoozes,
     vibrate = settings.defaultVibrate,
+    volumePercent = settings.softwareVolumePercent,
 )

@@ -14,6 +14,9 @@ import com.github.yeicor.radioalarmapp.data.Alarm
 import com.github.yeicor.radioalarmapp.data.AlarmOverrides
 import com.github.yeicor.radioalarmapp.data.AlarmRepository
 import com.github.yeicor.radioalarmapp.data.AppSettings
+import com.github.yeicor.radioalarmapp.data.withDefaults
+import com.github.yeicor.radioalarmapp.update.UpdateChecker
+import com.github.yeicor.radioalarmapp.update.UpdateInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +30,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val alarms = repository.alarms
     val settings = repository.settings
     val safetyReport = SafetyChecker.report
+    val playback = AlarmService.playback
+    val liveRms = AlarmService.liveRms
+
+    private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
+    val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
 
     private val _checking = MutableStateFlow(false)
     val checking: StateFlow<Boolean> = _checking.asStateFlow()
@@ -38,6 +46,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 runCheck(notify = false)
             }
         }
+        checkForUpdate(force = false)
     }
 
     fun nextAlarm(now: ZonedDateTime = ZonedDateTime.now()): Alarm? =
@@ -86,11 +95,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         NotificationHelper.ensureChannels(app)
     }
 
-    fun testAlarm(alarm: Alarm) {
+    fun testAlarm(alarm: Alarm? = null) {
+        val target = alarm ?: nextAlarm() ?: repository.alarms.value.firstOrNull() ?: Alarm(
+            id = -1L,
+            label = "Test Alarm",
+            streamUrl = Alarm.DEFAULT_STREAM_URL,
+        ).withDefaults(repository.settings.value)
         NotificationHelper.ensureChannels(app)
         val intent = Intent(app, AlarmService::class.java).apply {
             action = AlarmService.ACTION_START
-            putExtra(AlarmService.EXTRA_ALARM_ID, alarm.id)
+            putExtra(AlarmService.EXTRA_ALARM_ID, target.id)
             putExtra(AlarmService.EXTRA_TEST, true)
             putExtra(AlarmService.EXTRA_SNOOZE_COUNT, 0)
         }
@@ -99,6 +113,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }.onFailure {
             Log.e("Radio Alarm App", "Could not start test alarm", it)
         }
+        runCheck(notify = false)
+    }
+
+    fun checkForUpdate(force: Boolean = false) {
+        viewModelScope.launch {
+            val channel = settings.value.updateChannel
+            val info = UpdateChecker.check(app, channel, force = force)
+            if (info != null && info.isNewer) {
+                _updateInfo.value = info
+            }
+        }
+    }
+
+    fun dismissUpdate(info: UpdateInfo) {
+        UpdateChecker.dismiss(app, info.versionLabel)
+        _updateInfo.value = null
     }
 
     fun runCheck(notify: Boolean = false) {
@@ -110,6 +140,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _checking.value = false
             }
+        }
+    }
+
+    fun stopTest() {
+        runCatching {
+            app.stopService(Intent(app, AlarmService::class.java))
         }
     }
 }

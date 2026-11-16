@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.github.yeicor.radioalarmapp.data.AlarmRepository
+import com.github.yeicor.radioalarmapp.update.UpdateChecker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AlarmActionReceiver : BroadcastReceiver() {
     companion object {
@@ -51,6 +55,24 @@ class AlarmActionReceiver : BroadcastReceiver() {
         context.stopService(Intent(context, AlarmService::class.java))
         NotificationHelper.cancelAlarmNotification(context, alarmId)
         notifyEnded(context, alarmId, "dismissed")
+        checkForUpdatesAsync(context)
+    }
+
+    private fun checkForUpdatesAsync(context: Context) {
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val channel = AlarmRepository.get(context).settings.value.updateChannel
+                val update = UpdateChecker.check(context, channel, force = true)
+                if (update != null && update.isNewer) {
+                    NotificationHelper.showUpdateNotification(context, update)
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Update check after dismiss failed", t)
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 
     private fun notifyEnded(context: Context, alarmId: Long, result: String) {

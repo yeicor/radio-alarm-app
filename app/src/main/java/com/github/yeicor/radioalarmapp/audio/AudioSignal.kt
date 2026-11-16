@@ -54,5 +54,5 @@ object AudioSignal {
         }
     }
 
-    fun isAudible(rms: Float): Boolean = rms >= SILENCE_RMS
+    fun isAudible(rms: Float, threshold: Float = SILENCE_RMS): Boolean = rms >= threshold
 }

@@ -133,6 +133,7 @@ fun AlarmEditorScreen(
     var repeatDays by remember { mutableStateOf(initial.repeatDays) }
     var streamUrl by remember { mutableStateOf(initial.streamUrl) }
     var localUris by remember { mutableStateOf(initial.localFallbackUris) }
+    var volumePercent by remember { mutableStateOf(initial.volumePercent) }
     var rampSeconds by remember { mutableStateOf(initial.rampSeconds) }
     var snoozeMinutes by remember { mutableStateOf(initial.snoozeMinutes) }
     var maxSnoozes by remember { mutableStateOf(initial.maxSnoozes) }
@@ -481,6 +482,20 @@ fun AlarmEditorScreen(
                         }
                         Spacer(Modifier.height(16.dp))
                         ValueSlider(
+                            title = "Alarm volume",
+                            value = volumePercent,
+                            valueText = "$volumePercent%",
+                            range = 0f..100f,
+                            steps = 99,
+                            onChange = { volumePercent = it.roundToInt() },
+                        )
+                        Text(
+                            "Phone alarm volume also influences this. Use this to lower volume below the phone minimum.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                        ValueSlider(
                             title = "Volume ramp-up",
                             value = rampSeconds,
                             valueText = if (rampSeconds == 0) "Instant" else "${rampSeconds}s",
@@ -541,6 +556,7 @@ fun AlarmEditorScreen(
                             maxSnoozes = maxSnoozes,
                             vibrate = vibrate,
                             useSystemFallback = useSystemFallback,
+                            volumePercent = volumePercent,
                         ),
                     )
                 },

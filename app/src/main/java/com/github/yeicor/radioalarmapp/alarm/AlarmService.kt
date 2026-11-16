@@ -29,6 +29,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.github.yeicor.radioalarmapp.BuildConfig
+import com.github.yeicor.radioalarmapp.audio.AudioSignal
 import com.github.yeicor.radioalarmapp.audio.LocalAudio
 import com.github.yeicor.radioalarmapp.audio.ResolvedAudio
 import com.github.yeicor.radioalarmapp.audio.SilenceMonitor
@@ -96,6 +97,9 @@ class AlarmService : Service() {
 
         private val _playback = MutableStateFlow<PlaybackSnapshot?>(null)
         val playback: StateFlow<PlaybackSnapshot?> = _playback.asStateFlow()
+
+        private val _liveRms = MutableStateFlow(0f)
+        val liveRms: StateFlow<Float> = _liveRms.asStateFlow()
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -436,10 +440,19 @@ class AlarmService : Service() {
         }
     }
 
+    private var rmsJob: Job? = null
+
     private fun startWatchdog(lambdaLabel: () -> String) {
         watchdogJob?.cancel()
+        rmsJob?.cancel()
         lastVerified = false
         lastStatus = ""
+        rmsJob = scope.launch {
+            while (isActive) {
+                _liveRms.value = silenceMonitor.currentRms
+                delay(100)
+            }
+        }
         watchdogJob = scope.launch {
             delay(1_000)
             while (isActive) {
@@ -451,6 +464,7 @@ class AlarmService : Service() {
                 // The ramp owns the player volume; re-apply the current value in case a
                 // media session or audio policy changed it behind our back.
                 enforcePlayerVolume()
+                _liveRms.value = silenceMonitor.currentRms
                 val streamVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
                 val streamMuted = runCatching { audioManager.isStreamMute(AudioManager.STREAM_ALARM) }
                     .getOrDefault(false)
@@ -508,6 +522,7 @@ class AlarmService : Service() {
         if (switching) return
         switching = true
         watchdogJob?.cancel()
+        rmsJob?.cancel()
         lastVerified = false
         Log.w(TAG, "Source failure: $reason (tier=$currentTier attempt=$streamAttempt)")
         scope.launch {
@@ -602,13 +617,29 @@ class AlarmService : Service() {
         }
     }
 
+    private fun getEffectiveSoftwareVolume(): Float {
+        val settings = runCatching { AlarmRepository.get(applicationContext).settings.value }.getOrNull()
+        val alarmVol = alarm?.volumePercent ?: (settings?.softwareVolumePercent ?: 100)
+        return (alarmVol / 100f).coerceIn(0f, 1f)
+    }
+
+    private fun getSilenceThreshold(): Float {
+        val settings = runCatching { AlarmRepository.get(applicationContext).settings.value }.getOrNull()
+        val percent = (settings?.silenceThresholdPercent ?: 50).coerceIn(1, 100)
+        return AudioSignal.SILENCE_RMS * (percent / 100f)
+    }
+
     private fun enforcePlayerVolume() {
-        if (player.volume != currentVolume) {
-            runCatching { player.volume = currentVolume }
+        val softVol = getEffectiveSoftwareVolume()
+        val effective = (currentVolume * softVol).coerceIn(0f, 1f)
+        if (player.volume != effective) {
+            runCatching { player.volume = effective }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            systemRingtone?.let { runCatching { it.setVolume(currentVolume) } }
+            systemRingtone?.let { runCatching { it.setVolume(effective) } }
         }
+        silenceMonitor.volumeFactor = softVol
+        silenceMonitor.threshold = getSilenceThreshold()
     }
 
     private fun applyPlayerVolume() {
@@ -622,7 +653,8 @@ class AlarmService : Service() {
      * (low) value from the first verification for the whole ramp.
      */
     private fun publishVolume() {
-        val percent = (currentVolume * 100).roundToInt().coerceIn(0, 100)
+        val softVol = getEffectiveSoftwareVolume()
+        val percent = (currentVolume * softVol * 100).roundToInt().coerceIn(0, 100)
         _playback.value = _playback.value?.copy(volumePercent = percent)
     }
 
@@ -721,6 +753,7 @@ class AlarmService : Service() {
     override fun onDestroy() {
         rampJob?.cancel()
         watchdogJob?.cancel()
+        rmsJob?.cancel()
         systemLoopJob?.cancel()
         runCatching { systemRingtone?.stop() }
         systemRingtone = null
@@ -729,6 +762,7 @@ class AlarmService : Service() {
         runCatching { audioManager.unregisterAudioPlaybackCallback(audioCallback) }
         releaseWakeLock()
         _playback.value = null
+        _liveRms.value = 0f
         if (foregroundStarted) {
             runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             alarm?.let { NotificationHelper.cancelAlarmNotification(this, it.id) }

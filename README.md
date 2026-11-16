@@ -40,9 +40,10 @@ sound and a bundled sound.
   time change, timezone change and app update.
 - **Full-screen wake-up** – lock-screen activity with snooze/dismiss, also available from the
   notification.
-- **Automatic checks** – a low-power WorkManager job runs about ten times a day, verifies the
-  next alarm (including a non-silent stream and one playable local track) and sends a
-  notification when something needs attention.
+- **Automatic checks** – on-demand checks run when the app opens, when an alarm is saved or
+  enabled, and from the Settings screen. Each check verifies the next alarm (including a
+  non-silent stream and one playable local track) and sends a notification when something
+  needs attention.
 - **Duplicate & adjust** – duplicate an alarm from its overflow menu and change only what you
   need.
 - **Device-protected storage** – alarms and snoozes survive a reboot before first unlock.
@@ -121,10 +122,10 @@ buttons.
    up.
 7. Snooze or "I'm awake" stops playback. The alarm-stream volume is left as it was.
 
-## Automatic checks
+## On-demand checks
 
-A WorkManager job runs about ten times a day while the battery is not low. For the next alarm
-it checks:
+Safety checks run automatically when you open the app, save or enable an alarm, or tap the
+**Check now** button in Settings. For the next alarm, each check verifies:
 
 - exact-alarm and notification permission;
 - alarm volume (muted/zero critical, below 30% warning);
@@ -174,7 +175,7 @@ Gradle wrapper are grouped into one pull request each.
 app/src/main/java/com/github/yeicor/radioalarmapp/
 ├── MainActivity.kt              navigation, permissions, alarm testing
 ├── MainViewModel.kt             repository/state glue, scheduling after edits
-├── RadioAlarmApp.kt             startup, channels, periodic checks
+├── RadioAlarmApp.kt             startup, channels, cancel legacy periodic check
 ├── alarm/
 │   ├── AlarmService.kt          playback, retry chain, verification, player-volume ramp
 │   ├── AlarmScheduler.kt        exact alarms and snoozes
@@ -182,7 +183,6 @@ app/src/main/java/com/github/yeicor/radioalarmapp/
 │   ├── AlarmActionReceiver.kt   snooze/dismiss
 │   ├── BootReceiver.kt          restore after boot/time/app update
 │   ├── SafetyChecker.kt         reliability and alarm-volume checks, report cache
-│   ├── SafetyCheckWorker.kt     low-power periodic check
 │   ├── NotificationHelper.kt    channels and notifications
 │   └── RingActivity.kt          full-screen lock-screen alarm UI
 ├── audio/
@@ -215,8 +215,8 @@ app/src/main/java/com/github/yeicor/radioalarmapp/
   alarm volume** button opens it). The app deliberately leaves that level alone.
 - **Radio never starts at wake-up** – run **Test** in the alarm editor and check the result.
   Some streams require a user agent or block data-centre IPs; use a local backup as well.
-- **No safety notifications** – allow notifications for the app and check that the phone is
-  not blocking background work.
+- **No safety notifications** – allow notifications for the app. Checks run when you open the
+  app, save an alarm, or tap **Check now** in Settings.
 - **Widget buttons do not respond** – remove and re-add the widget so the launcher refreshes
   its pending intents, then check that an alarm is enabled.
 - **Alarm does not repeat** – one-time alarms are disabled after firing by design. Set repeat

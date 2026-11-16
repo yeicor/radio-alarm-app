@@ -14,4 +14,6 @@
     <string name="widget_action_later">Move alarm 10 minutes later</string>
     <string name="widget_action_skip">Skip next alarm</string>
     <string name="widget_action_undo">Undo skip</string>
+    <string name="updates_channel_name">App updates</string>
+    <string name="updates_channel_description">Notifications when new app releases or nightly builds are available</string>
 </resources>

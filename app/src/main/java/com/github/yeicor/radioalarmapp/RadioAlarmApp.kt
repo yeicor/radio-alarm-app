@@ -4,7 +4,6 @@ import android.app.Application
 import android.util.Log
 import com.github.yeicor.radioalarmapp.alarm.NotificationHelper
 import com.github.yeicor.radioalarmapp.alarm.SafetyChecker
-import com.github.yeicor.radioalarmapp.alarm.SafetyChecks
 import com.github.yeicor.radioalarmapp.data.AlarmRepository
 
 class RadioAlarmApp : Application() {
@@ -20,7 +19,7 @@ class RadioAlarmApp : Application() {
             NotificationHelper.ensureChannels(this)
         }.onFailure { Log.e("RadioAlarmApp", "Could not create notification channels", it) }
         runCatching {
-            SafetyChecks.ensureScheduled(this)
-        }.onFailure { Log.e("RadioAlarmApp", "Could not schedule safety checks", it) }
+            androidx.work.WorkManager.getInstance(this).cancelUniqueWork("periodic_safety_check")
+        }.onFailure { Log.e("RadioAlarmApp", "Could not cancel old periodic check", it) }
     }
 }

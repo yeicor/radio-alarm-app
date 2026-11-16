@@ -1,7 +1,10 @@
 package com.github.yeicor.radioalarmapp
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -31,6 +34,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.yeicor.radioalarmapp.alarm.AlarmActionReceiver
 import com.github.yeicor.radioalarmapp.alarm.NotificationHelper
 import com.github.yeicor.radioalarmapp.alarm.SafetyFix
 import com.github.yeicor.radioalarmapp.alarm.SafetyChecker
@@ -96,6 +100,9 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
     val report by viewModel.safetyReport.collectAsStateWithLifecycle()
     val checking by viewModel.checking.collectAsStateWithLifecycle()
     val shouldOpenSafety by openSafety.collectAsStateWithLifecycle()
+    val playback by viewModel.playback.collectAsStateWithLifecycle()
+    val liveRms by viewModel.liveRms.collectAsStateWithLifecycle()
+    val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
 
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var editorJson by rememberSaveable { mutableStateOf<String?>(null) }
@@ -110,10 +117,24 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
                 permissionRefresh++
                 NotificationHelper.ensureChannels(context)
                 SafetyChecker.initialize(context)
+                viewModel.checkForUpdate(force = false)
             }
         }
+        val dismissReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.getStringExtra(AlarmActionReceiver.EXTRA_RESULT) == "dismissed") {
+                    viewModel.checkForUpdate(force = true)
+                }
+            }
+        }
+        val filter = IntentFilter(AlarmActionReceiver.ACTION_ALARM_ENDED)
+        ContextCompat.registerReceiver(context, dismissReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            runCatching { context.unregisterReceiver(dismissReceiver) }
+        }
     }
 
     val permissions = remember(permissionRefresh, context) {
@@ -209,12 +230,17 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
                 checking = checking,
                 onBack = { showSettings = false },
                 onUpdateSettings = viewModel::updateSettings,
-                onRunCheck = { viewModel.runCheck(notify = false) },
                 onFix = ::handleFix,
                 onEditNextAlarm = {
                     nextAlarm?.let { openEditor(it, isNew = false, duplicate = false) }
                 },
-                onTestNextAlarm = { nextAlarm?.let(viewModel::testAlarm) },
+                onTestNextAlarm = { viewModel.testAlarm(nextAlarm) },
+                onStopTest = viewModel::stopTest,
+                playback = playback,
+                liveRms = liveRms,
+                updateInfo = updateInfo,
+                onDismissUpdate = viewModel::dismissUpdate,
+                onCheckUpdate = { viewModel.checkForUpdate(force = true) },
             )
         }
 
@@ -241,8 +267,14 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
                 onToggle = viewModel::setEnabled,
                 onTest = viewModel::testAlarm,
                 onSettings = { showSettings = true },
-                onRunCheck = { viewModel.runCheck(notify = false) },
+                onRunCheck = {
+                    if (playback != null) viewModel.stopTest() else viewModel.testAlarm(nextAlarm)
+                },
                 onFix = ::handleFix,
+                playback = playback,
+                onStopTest = viewModel::stopTest,
+                updateInfo = updateInfo,
+                onDismissUpdate = viewModel::dismissUpdate,
             )
         }
     }

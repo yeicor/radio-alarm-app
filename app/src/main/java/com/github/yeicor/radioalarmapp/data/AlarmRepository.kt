@@ -1,6 +1,7 @@
 package com.github.yeicor.radioalarmapp.data
 
 import android.content.Context
+import com.github.yeicor.radioalarmapp.update.UpdateChannel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,6 +67,9 @@ class AlarmRepository private constructor(context: Context) {
             put("defaultVibrate", settings.defaultVibrate)
             put("fallbackFolderUri", settings.fallbackFolderUri ?: "")
             put("systemAlarmSoundUri", settings.systemAlarmSoundUri ?: "")
+            put("softwareVolumePercent", settings.softwareVolumePercent)
+            put("silenceThresholdPercent", settings.silenceThresholdPercent)
+            put("updateChannel", settings.updateChannel.name)
         }
         prefs.edit().putString(KEY_SETTINGS, json.toString()).commit()
         _settings.value = settings
@@ -106,6 +110,11 @@ class AlarmRepository private constructor(context: Context) {
             defaultVibrate = json?.optBoolean("defaultVibrate", true) ?: true,
             fallbackFolderUri = if (json?.has("fallbackFolderUri") == true) json.optString("fallbackFolderUri").ifBlank { null } else null,
             systemAlarmSoundUri = if (json?.has("systemAlarmSoundUri") == true) json.optString("systemAlarmSoundUri").ifBlank { null } else null,
+            softwareVolumePercent = json?.optInt("softwareVolumePercent", 100) ?: 100,
+            silenceThresholdPercent = json?.optInt("silenceThresholdPercent", 50) ?: 50,
+            updateChannel = runCatching {
+                json?.optString("updateChannel")?.let { enumValueOf<UpdateChannel>(it) }
+            }.getOrNull() ?: UpdateChannel.STABLE,
         )
     }
 

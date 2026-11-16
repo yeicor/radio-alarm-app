@@ -7,11 +7,15 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,18 +29,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.BatteryAlert
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,13 +64,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.yeicor.radioalarmapp.BuildConfig
+import com.github.yeicor.radioalarmapp.alarm.PlaybackSnapshot
 import com.github.yeicor.radioalarmapp.alarm.SafetyFix
 import com.github.yeicor.radioalarmapp.alarm.SafetyReport
+import com.github.yeicor.radioalarmapp.audio.AudioSignal
 import com.github.yeicor.radioalarmapp.audio.LocalAudio
 import com.github.yeicor.radioalarmapp.data.Alarm
 import com.github.yeicor.radioalarmapp.data.AppSettings
@@ -71,10 +86,13 @@ import com.github.yeicor.radioalarmapp.ui.theme.SunriseSoft
 import com.github.yeicor.radioalarmapp.ui.theme.TextPrimary
 import com.github.yeicor.radioalarmapp.ui.theme.TextSecondary
 import com.github.yeicor.radioalarmapp.ui.theme.Warning
+import com.github.yeicor.radioalarmapp.update.UpdateChannel
+import com.github.yeicor.radioalarmapp.update.UpdateInfo
 import com.github.yeicor.radioalarmapp.util.TimeText
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -86,10 +104,15 @@ fun SettingsScreen(
     checking: Boolean,
     onBack: () -> Unit,
     onUpdateSettings: (AppSettings) -> Unit,
-    onRunCheck: () -> Unit,
     onFix: (SafetyFix) -> Unit,
     onEditNextAlarm: () -> Unit,
     onTestNextAlarm: () -> Unit,
+    onStopTest: () -> Unit,
+    playback: PlaybackSnapshot?,
+    liveRms: Float,
+    updateInfo: UpdateInfo?,
+    onDismissUpdate: (UpdateInfo) -> Unit,
+    onCheckUpdate: () -> Unit,
 ) {
     val context = LocalContext.current
     var showAllIssues by remember { mutableStateOf(false) }
@@ -128,33 +151,232 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    "Reliability",
+                    "Settings",
                     style = MaterialTheme.typography.headlineMedium,
                     color = TextPrimary,
                     modifier = Modifier.weight(1f),
                 )
                 HelpButton(
-                    title = "Reliability checks",
-                    text = "A low-power check runs about ten times a day. It verifies the alarm volume, " +
-                        "battery, permissions, radio reachability and local backups, and sends a notification " +
-                        "when something could stop the next alarm.\n\n" +
-                        "The alarm itself retries the radio twice, then uses local audio, the phone alarm " +
-                        "sound and finally a built-in sound. The app never changes your Do Not Disturb settings.",
+                    title = "Reliability & Settings",
+                    text = "Checks run on-demand when opening the app, saving alarms, or tapping Test.\n\n" +
+                        "The alarm retries the radio twice, then uses local audio, the phone alarm " +
+                        "sound and finally a built-in sound. Software volume slider lets you lower the " +
+                        "volume below the phone's minimum.",
                 )
             }
         }
 
-        item {
-            SafetyHero(
-                report = report,
-                nextAlarm = nextAlarm,
-                checking = checking,
-                onRunCheck = onRunCheck,
-                onEditNextAlarm = onEditNextAlarm,
-                onTestNextAlarm = onTestNextAlarm,
-            )
+        // 1. Update available banner (if an update is ready)
+        if (updateInfo != null && updateInfo.isNewer) {
+            item {
+                UpdateBanner(
+                    updateInfo = updateInfo,
+                    onUpdate = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        runCatching { context.startActivity(intent) }
+                    },
+                    onDismiss = { onDismissUpdate(updateInfo) },
+                )
+            }
         }
 
+        // 2. Sound, Volume & Alarm Testing Card
+        item {
+            GlassCard(accent = if (playback != null) Mint else Sunrise) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(
+                            if (playback != null) Icons.Rounded.GraphicEq else Icons.AutoMirrored.Rounded.VolumeUp,
+                            if (playback != null) Mint else Sunrise,
+                            44,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Sound & Volume",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                if (playback != null) "Testing alarm in progress…" else "Global volume & audibility detector",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    SettingsSlider(
+                        title = "Alarm volume",
+                        value = settings.softwareVolumePercent,
+                        valueText = "${settings.softwareVolumePercent}%",
+                        range = 0f..100f,
+                        steps = 99,
+                        onChange = { onUpdateSettings(settings.copy(softwareVolumePercent = it.roundToInt())) },
+                    )
+                    Text(
+                        "Note: Phone alarm volume also influences final sound level. Use this to lower volume below the phone's hardware minimum.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+
+                    SettingsSlider(
+                        title = "Silence detector threshold",
+                        value = settings.silenceThresholdPercent,
+                        valueText = "${settings.silenceThresholdPercent}%",
+                        range = 5f..150f,
+                        steps = 28,
+                        onChange = { onUpdateSettings(settings.copy(silenceThresholdPercent = it.roundToInt())) },
+                    )
+                    Text(
+                        "Radio audio below this threshold is treated as silent and triggers fallbacks. Lower values are more sensitive.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 14.dp),
+                    )
+
+                    // Visual indicator while testing
+                    if (playback != null) {
+                        Spacer(Modifier.height(4.dp))
+                        AudibilityIndicator(
+                            liveRms = liveRms,
+                            volumePercent = settings.softwareVolumePercent,
+                            thresholdPercent = settings.silenceThresholdPercent,
+                            sourceLabel = playback.sourceLabel,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (playback != null) {
+                            Button(
+                                onClick = onStopTest,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White),
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Stop alarm")
+                            }
+                        } else {
+                            Button(
+                                onClick = onTestNextAlarm,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Sunrise, contentColor = Color(0xFF211307)),
+                            ) {
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (nextAlarm != null) "Test alarm" else "Test audio")
+                            }
+                        }
+                        if (nextAlarm != null) {
+                            TextButton(onClick = onEditNextAlarm) {
+                                Text("Edit alarm", color = TextSecondary)
+                            }
+                        }
+                    }
+
+                    if (report != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            buildString {
+                                append("Last checked ${relativeTime(report.checkedAt)}")
+                                report.batteryPercent?.let { append(" · Battery $it%") }
+                                report.streamReachable?.let { append(if (it) " · Radio OK" else " · Radio unreachable") }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Update Channel Settings Card
+        item {
+            GlassCard(accent = Sky) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.SystemUpdate, Sky, 44)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Updates",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                "Checks on app launch and when an alarm is dismissed",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    Text(
+                        "Release Channel",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary,
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = settings.updateChannel == UpdateChannel.STABLE,
+                            onClick = { onUpdateSettings(settings.copy(updateChannel = UpdateChannel.STABLE)) },
+                            label = { Text("Stable") },
+                            leadingIcon = if (settings.updateChannel == UpdateChannel.STABLE) {
+                                { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Sunrise.copy(alpha = 0.2f),
+                                selectedLabelColor = SunriseSoft,
+                            ),
+                        )
+                        FilterChip(
+                            selected = settings.updateChannel == UpdateChannel.NIGHTLY,
+                            onClick = { onUpdateSettings(settings.copy(updateChannel = UpdateChannel.NIGHTLY)) },
+                            label = { Text("Nightly (main)") },
+                            leadingIcon = if (settings.updateChannel == UpdateChannel.NIGHTLY) {
+                                { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Sunrise.copy(alpha = 0.2f),
+                                selectedLabelColor = SunriseSoft,
+                            ),
+                        )
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        if (settings.updateChannel == UpdateChannel.STABLE) {
+                            "Official GitHub releases with tested release APKs."
+                        } else {
+                            "Continuous integration builds from every commit to the main branch."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = onCheckUpdate,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Check for updates now")
+                    }
+                }
+            }
+        }
+
+        // 4. Reliability Findings (if issues exist)
         if (!report?.issues.isNullOrEmpty()) {
             item {
                 GlassCard(accent = if (report.criticalCount > 0) Danger else Warning) {
@@ -166,18 +388,21 @@ fun SettingsScreen(
                                 color = TextPrimary,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = onRunCheck, enabled = !checking) {
-                                Text(if (checking) "Checking…" else "Recheck", color = Sunrise)
-                            }
                         }
                         val visible = if (showAllIssues) report.issues else report.issues.take(3)
-                        visible.forEach { issue -> IssueRow(issue, onFix) }
+                        visible.forEachIndexed { index, issue ->
+                            if (index > 0) HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 8.dp))
+                            FindingRow(issue = issue, onFix = { onFix(issue.fix) })
+                        }
                         if (report.issues.size > 3) {
                             TextButton(
                                 onClick = { showAllIssues = !showAllIssues },
-                                contentPadding = PaddingValues(horizontal = 0.dp),
+                                modifier = Modifier.padding(top = 4.dp),
                             ) {
-                                Text(if (showAllIssues) "Show less" else "Show all ${report.issues.size}", color = Sunrise)
+                                Text(
+                                    if (showAllIssues) "Show fewer" else "Show ${report.issues.size - 3} more",
+                                    color = SunriseSoft,
+                                )
                             }
                         }
                     }
@@ -185,74 +410,69 @@ fun SettingsScreen(
             }
         }
 
+        // 5. Reliability permissions & settings
         item {
             GlassCard {
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SectionLabel("Permissions", Modifier.weight(1f))
+                        SectionLabel("System permissions", Modifier.weight(1f))
                         HelpButton(
-                            title = "Why two permissions?",
+                            title = "System permissions",
                             text = "Exact alarms let Android wake the phone at the right minute. " +
-                                "Notifications show the ringing screen, snooze controls and safety alerts. " +
-                                "Radio Alarm App asks for nothing else.",
+                                "Notification permission is needed for ringing controls.",
                         )
                     }
-                    StatusRow(
-                        icon = Icons.Rounded.Alarm,
+                    Spacer(Modifier.height(4.dp))
+                    PermissionRow(
+                        icon = Icons.Rounded.NotificationsActive,
+                        title = "Notifications",
+                        detail = if (permissions.notifications) "Allowed" else "Blocked",
+                        ok = permissions.notifications,
+                        actionLabel = "Allow",
+                        onFix = { onFix(SafetyFix.NOTIFICATIONS) },
+                    )
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+                    PermissionRow(
+                        icon = Icons.Rounded.Shield,
                         title = "Exact alarms",
                         detail = if (permissions.exactAlarms) "Allowed" else "Blocked",
                         ok = permissions.exactAlarms,
                         actionLabel = "Allow",
-                        onAction = { onFix(SafetyFix.EXACT_ALARMS) },
-                        warningIsCritical = true,
-                    )
-                    StatusRow(
-                        icon = Icons.Rounded.NotificationsActive,
-                        title = "Notifications",
-                        detail = if (permissions.notifications) "On" else "Off",
-                        ok = permissions.notifications,
-                        actionLabel = "Turn on",
-                        onAction = { onFix(SafetyFix.NOTIFICATIONS) },
-                        warningIsCritical = true,
+                        onFix = { onFix(SafetyFix.EXACT_ALARMS) },
                     )
                 }
             }
         }
 
+        // 6. Audio Fallback Configuration
         item {
             GlassCard {
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SectionLabel("Backup audio", Modifier.weight(1f))
+                        SectionLabel("Fallback audio", Modifier.weight(1f))
                         HelpButton(
-                            title = "Fallback order",
-                            text = "Web radio (two retries) → local files or folder → phone alarm sound → " +
-                                "built-in sound. The built-in sound is always available, even offline.",
+                            title = "Fallback audio",
+                            text = "When the radio stream cannot be reached, the app falls back to local music, " +
+                                "the phone alarm ringtone, or a built-in sound.",
                         )
                     }
+                    Spacer(Modifier.height(4.dp))
                     FallbackChoiceRow(
                         icon = Icons.Rounded.FolderOpen,
-                        title = "Default local folder",
+                        title = "Music folder",
                         detail = settings.fallbackFolderUri?.let { LocalAudio.displayName(context, it) } ?: "Not set",
-                        action = if (settings.fallbackFolderUri == null) "Choose" else "Change",
+                        action = if (settings.fallbackFolderUri.isNullOrBlank()) "Choose" else "Change",
                         onAction = { folderPicker.launch(null) },
                     )
-                    if (settings.fallbackFolderUri != null) {
-                        TextButton(
-                            onClick = { onUpdateSettings(settings.copy(fallbackFolderUri = null)) },
-                            contentPadding = PaddingValues(horizontal = 0.dp),
-                        ) { Text("Clear", color = TextSecondary) }
-                    }
-                    DividerLine()
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
                     FallbackChoiceRow(
                         icon = Icons.Rounded.MusicNote,
                         title = "Phone alarm sound",
-                        detail = if (settings.systemAlarmSoundUri != null) "Custom sound" else "Phone default",
-                        action = "Choose",
+                        detail = settings.systemAlarmSoundUri?.let { LocalAudio.displayName(context, it) } ?: "Phone default",
+                        action = "Change",
                         onAction = {
                             val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
                                 putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Radio Alarm App backup sound")
                                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
                                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
                                 putExtra(
@@ -263,28 +483,11 @@ fun SettingsScreen(
                             ringtonePicker.launch(intent)
                         },
                     )
-                    if (settings.systemAlarmSoundUri != null) {
-                        TextButton(
-                            onClick = { onUpdateSettings(settings.copy(systemAlarmSoundUri = null)) },
-                            contentPadding = PaddingValues(horizontal = 0.dp),
-                        ) { Text("Use phone default", color = TextSecondary) }
-                    }
-                    DividerLine()
-                    Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconBubble(Icons.Rounded.Shield, Mint, 38)
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            "Built-in final fallback",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary,
-                            modifier = Modifier.weight(1f),
-                        )
-                        StatusPill("Always ready", Mint, Icons.Rounded.CheckCircle)
-                    }
                 }
             }
         }
 
+        // 7. Defaults for New Alarms
         item {
             GlassCard {
                 Column(Modifier.padding(18.dp)) {
@@ -292,8 +495,7 @@ fun SettingsScreen(
                         SectionLabel("Defaults for new alarms", Modifier.weight(1f))
                         HelpButton(
                             title = "Defaults",
-                            text = "New alarms start with these values. Existing alarms keep their own " +
-                                "settings; edit an alarm to change them individually.",
+                            text = "New alarms start with these values. Existing alarms keep their own settings.",
                         )
                     }
                     Spacer(Modifier.height(4.dp))
@@ -303,9 +505,7 @@ fun SettingsScreen(
                         valueText = if (settings.defaultRampSeconds == 0) "Instant" else "${settings.defaultRampSeconds}s",
                         range = 0f..180f,
                         steps = 35,
-                        onChange = {
-                            onUpdateSettings(settings.copy(defaultRampSeconds = it.roundToInt()))
-                        },
+                        onChange = { onUpdateSettings(settings.copy(defaultRampSeconds = it.roundToInt())) },
                     )
                     SettingsSlider(
                         title = "Snooze duration",
@@ -313,9 +513,7 @@ fun SettingsScreen(
                         valueText = TimeText.minutesLabel(settings.defaultSnoozeMinutes),
                         range = 1f..30f,
                         steps = 28,
-                        onChange = {
-                            onUpdateSettings(settings.copy(defaultSnoozeMinutes = it.roundToInt()))
-                        },
+                        onChange = { onUpdateSettings(settings.copy(defaultSnoozeMinutes = it.roundToInt())) },
                     )
                     SettingsSlider(
                         title = "Snoozes allowed",
@@ -323,9 +521,7 @@ fun SettingsScreen(
                         valueText = if (settings.defaultMaxSnoozes == 0) "Off" else "${settings.defaultMaxSnoozes}",
                         range = 0f..5f,
                         steps = 4,
-                        onChange = {
-                            onUpdateSettings(settings.copy(defaultMaxSnoozes = it.roundToInt()))
-                        },
+                        onChange = { onUpdateSettings(settings.copy(defaultMaxSnoozes = it.roundToInt())) },
                     )
                 }
             }
@@ -343,107 +539,170 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SafetyHero(
-    report: SafetyReport?,
-    nextAlarm: Alarm?,
-    checking: Boolean,
-    onRunCheck: () -> Unit,
-    onEditNextAlarm: () -> Unit,
-    onTestNextAlarm: () -> Unit,
+private fun UpdateBanner(
+    updateInfo: UpdateInfo,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    val hasWarning = report != null && report.warningCount > 0
-    GlassCard(accent = when {
-        report == null -> Sky
-        report.criticalCount > 0 -> Danger
-        hasWarning -> Warning
-        else -> Mint
-    }) {
-        Column(Modifier.padding(20.dp)) {
+    Surface(
+        color = Sunrise.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Sunrise.copy(alpha = 0.35f)),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBubble(
-                    when {
-                        report == null -> Icons.Rounded.Shield
-                        report.criticalCount > 0 -> Icons.Rounded.BatteryAlert
-                        hasWarning -> Icons.Rounded.Warning
-                        else -> Icons.Rounded.CheckCircle
-                    },
-                    when {
-                        report == null -> Sky
-                        report.criticalCount > 0 -> Danger
-                        hasWarning -> Warning
-                        else -> Mint
-                    },
-                    48,
+                Icon(
+                    Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    tint = Sunrise,
+                    modifier = Modifier.size(24.dp),
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        when {
-                            nextAlarm == null -> "No upcoming alarm"
-                            report == null -> "Not checked yet"
-                            report.criticalCount > 0 -> "Needs attention"
-                            hasWarning -> "Has warnings"
-                            else -> "Ready"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
+                        "Update available: ${updateInfo.versionLabel}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
                     )
                     Text(
-                        if (nextAlarm != null) {
-                            "${nextAlarm.timeLabel()} · ${nextAlarm.label.ifBlank { "Alarm" }}"
-                        } else {
-                            "Create an alarm to enable checks."
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
+                        if (updateInfo.channel == UpdateChannel.STABLE) "Official stable release" else "Nightly CI artifact",
+                        style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                }
             }
-            if (report != null) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    buildString {
-                        append("Checked ${relativeTime(report.checkedAt)}")
-                        report.batteryPercent?.let { append(" · Battery $it%") }
-                        report.streamReachable?.let { append(if (it) " · Radio OK" else " · Radio down") }
-                        if (report.localFallbackCount > 0) append(" · local backup")
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                )
-            }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = onRunCheck,
-                    enabled = !checking,
-                    shape = RoundedCornerShape(14.dp),
+                    onClick = onUpdate,
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Sunrise, contentColor = Color(0xFF211307)),
                 ) {
-                    Icon(
-                        if (checking) Icons.Rounded.Refresh else Icons.Rounded.Shield,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(Modifier.width(7.dp))
-                    Text(if (checking) "Checking…" else "Check now")
+                    Text("Download & install")
                 }
-                if (nextAlarm != null) {
-                    OutlinedButton(
-                        onClick = onTestNextAlarm,
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Test")
-                    }
-                    TextButton(onClick = onEditNextAlarm) {
-                        Text("Edit", color = TextSecondary)
-                    }
+                TextButton(onClick = onDismiss) {
+                    Text("Later", color = TextSecondary)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AudibilityIndicator(
+    liveRms: Float,
+    volumePercent: Int,
+    thresholdPercent: Int,
+    sourceLabel: String,
+) {
+    val volMultiplier = (volumePercent / 100f).coerceIn(0.01f, 1f)
+    val effectiveThreshold = AudioSignal.SILENCE_RMS * (thresholdPercent / 100f).coerceAtLeast(0.01f)
+    val effectiveRms = liveRms * volMultiplier
+    val ratio = if (effectiveThreshold > 0f) effectiveRms / effectiveThreshold else 0f
+    val isAudible = ratio >= 1.0f
+
+    Surface(
+        color = if (isAudible) Mint.copy(alpha = 0.1f) else Warning.copy(alpha = 0.1f),
+        border = BorderStroke(1.dp, if (isAudible) Mint.copy(alpha = 0.25f) else Warning.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    sourceLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (isAudible) {
+                        "✓ ${String.format(Locale.US, "%.1f", ratio)}× above threshold"
+                    } else {
+                        "⚠ Too quiet (${String.format(Locale.US, "%.1f", ratio)}× threshold)"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isAudible) Mint else Warning,
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // VU meter bar with threshold tick at 50%
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = 0.08f)),
+            ) {
+                val fillFraction = (ratio / 2.0f).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fillFraction)
+                        .background(if (isAudible) Mint else Warning),
+                )
+                // Threshold tick line at 50% (which represents 1.0× ratio)
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(2.dp)
+                        .align(Alignment.Center)
+                        .background(Color.White.copy(alpha = 0.6f)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FindingRow(issue: com.github.yeicor.radioalarmapp.alarm.SafetyIssue, onFix: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(issue.title, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text(issue.message, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
+        if (issue.fixLabel.isNotBlank()) {
+            TextButton(onClick = onFix) {
+                Text(issue.fixLabel, color = Sunrise)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    detail: String,
+    ok: Boolean,
+    actionLabel: String,
+    onFix: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = if (ok) Mint else Warning, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        }
+        if (!ok) {
+            TextButton(onClick = onFix) { Text(actionLabel, color = Sunrise) }
         }
     }
 }

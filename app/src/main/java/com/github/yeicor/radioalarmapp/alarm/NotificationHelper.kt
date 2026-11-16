@@ -19,7 +19,9 @@ object NotificationHelper {
     private const val CHANNEL_RING_BYPASS_LEGACY = "radio_alarm_app_ringing_bypass_v1"
     private const val CHANNEL_RING_LEGACY = "radio_alarm_app_ringing_v1"
     const val CHANNEL_SAFETY = "radio_alarm_app_safety_v1"
+    const val CHANNEL_UPDATES = "radio_alarm_app_updates_v1"
     private const val SAFETY_NOTIFICATION_ID = 8100
+    private const val UPDATE_NOTIFICATION_ID = 8200
     private const val ALARM_BASE_ID = 100_000
     private const val SNOOZE_REQUEST_BASE = 200_000
     private const val DISMISS_REQUEST_BASE = 400_000
@@ -65,6 +67,18 @@ object NotificationHelper {
             }
         }
         manager.createNotificationChannel(safety)
+
+        val updates = NotificationChannel(
+            CHANNEL_UPDATES,
+            context.getString(R.string.updates_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = context.getString(R.string.updates_channel_description)
+            enableVibration(true)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            setShowBadge(true)
+        }
+        manager.createNotificationChannel(updates)
     }
 
     fun alarmNotificationId(alarmId: Long): Int = ALARM_BASE_ID + (alarmId % ALARM_ID_MOD).toInt()
@@ -205,6 +219,35 @@ object NotificationHelper {
             .setOnlyAlertOnce(false)
             .addAction(0, "Open Radio Alarm App", open)
         notifySafely(context, SAFETY_NOTIFICATION_ID, builder.build())
+    }
+
+    fun showUpdateNotification(context: Context, update: com.github.yeicor.radioalarmapp.update.UpdateInfo) {
+        ensureChannels(context)
+        val updateIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(update.downloadUrl))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            UPDATE_NOTIFICATION_ID,
+            updateIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val title = "Update available: ${update.versionLabel}"
+        val text = "A new ${update.channel.name.lowercase()} build is available. Tap to update."
+        val builder = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setSmallIcon(R.drawable.ic_stat_wake)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(pendingIntent)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .addAction(0, "Download update", pendingIntent)
+        notifySafely(context, UPDATE_NOTIFICATION_ID, builder.build())
+    }
+
+    fun cancelUpdateNotification(context: Context) {
+        runCatching { NotificationManagerCompat.from(context).cancel(UPDATE_NOTIFICATION_ID) }
     }
 
     fun cancelSafetyWarning(context: Context) {

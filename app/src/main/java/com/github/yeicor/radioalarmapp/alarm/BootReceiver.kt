@@ -16,7 +16,6 @@ class BootReceiver : BroadcastReceiver() {
             -> {
                 runCatching { AlarmRepository.get(context) }
                 runCatching { NotificationHelper.ensureChannels(context) }
-                runCatching { SafetyChecks.ensureScheduled(context) }
                 // Scheduling is the critical part: keep it independent of channel setup
                 // so one failure cannot skip every alarm.
                 runCatching { AlarmScheduler.scheduleAll(context) }
