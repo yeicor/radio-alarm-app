@@ -8,15 +8,23 @@ android {
     compileSdk = 37
     compileSdkMinor = 0
 
+    val gitCommitSha = runCatching {
+        val process = ProcessBuilder("git", "rev-parse", "HEAD").start()
+        process.inputStream.bufferedReader().readText().trim()
+    }.getOrDefault("")
+
     defaultConfig {
         applicationId = "com.github.yeicor.radioalarmapp"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.0.6"
+        versionCode = 7
+        versionName = "0.0.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        buildConfigField("String", "GIT_COMMIT_SHA", "\"$gitCommitSha\"")
+        buildConfigField("long", "BUILD_TIME", "${System.currentTimeMillis()}L")
     }
 
     val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")

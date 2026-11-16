@@ -122,20 +122,21 @@ buttons.
    up.
 7. Snooze or "I'm awake" stops playback. The alarm-stream volume is left as it was.
 
-## On-demand checks
+## Runtime verification and auto-fallbacks
 
-Safety checks run automatically when you open the app, save or enable an alarm, or tap the
-**Check now** button in Settings. For the next alarm, each check verifies:
+Rather than running periodic or preemptive nag checks that drain battery and complain about
+deliberately low volumes, the app performs all audibility verification dynamically at alarm time.
+If a stream fails, is silent, or encounters network drops, the multi-tier fallback chain immediately
+switches between:
 
-- exact-alarm and notification permission;
-- alarm volume (muted/zero critical, below 30% warning);
-- battery level and charging state;
-- radio reachability and whether a decoded audio sample is actually non-silent;
-- one playable, non-silent local track (a folder with thousands of songs is sampled, never
-  fully enumerated).
+- Radio stream retry
+- Local music folder / audio files
+- Phone alarm ringtone
+- Embedded wake sound
 
-Results appear in the app and, when something is wrong, as a high-priority notification. The
-same check runs when you save or enable an alarm.
+Software volume and silence detection threshold can be configured from Settings, with a live VU
+meter when testing alarms. Updates are checked automatically on app launch and immediately after
+dismissing an alarm, supporting both stable releases and nightly builds (direct via nightly.link).
 
 ## Building and CI
 
@@ -182,7 +183,7 @@ app/src/main/java/com/github/yeicor/radioalarmapp/
 │   ├── AlarmReceiver.kt         fires alarms and reschedules repeats
 │   ├── AlarmActionReceiver.kt   snooze/dismiss
 │   ├── BootReceiver.kt          restore after boot/time/app update
-│   ├── SafetyChecker.kt         reliability and alarm-volume checks, report cache
+│   ├── SafetyChecker.kt         error report and fix definitions
 │   ├── NotificationHelper.kt    channels and notifications
 │   └── RingActivity.kt          full-screen lock-screen alarm UI
 ├── audio/

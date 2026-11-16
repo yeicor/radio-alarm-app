@@ -37,7 +37,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.yeicor.radioalarmapp.alarm.AlarmActionReceiver
 import com.github.yeicor.radioalarmapp.alarm.NotificationHelper
 import com.github.yeicor.radioalarmapp.alarm.SafetyFix
-import com.github.yeicor.radioalarmapp.alarm.SafetyChecker
 import com.github.yeicor.radioalarmapp.data.Alarm
 import com.github.yeicor.radioalarmapp.data.AppSettings
 import com.github.yeicor.radioalarmapp.data.withDefaults
@@ -97,8 +96,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
     val viewModel: MainViewModel = viewModel()
     val alarms by viewModel.alarms.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val report by viewModel.safetyReport.collectAsStateWithLifecycle()
-    val checking by viewModel.checking.collectAsStateWithLifecycle()
     val shouldOpenSafety by openSafety.collectAsStateWithLifecycle()
     val playback by viewModel.playback.collectAsStateWithLifecycle()
     val liveRms by viewModel.liveRms.collectAsStateWithLifecycle()
@@ -116,7 +113,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
             if (event == Lifecycle.Event.ON_RESUME) {
                 permissionRefresh++
                 NotificationHelper.ensureChannels(context)
-                SafetyChecker.initialize(context)
                 viewModel.checkForUpdate(force = false)
             }
         }
@@ -225,9 +221,7 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
             SettingsScreen(
                 settings = settings,
                 permissions = permissions,
-                report = report,
                 nextAlarm = nextAlarm,
-                checking = checking,
                 onBack = { showSettings = false },
                 onUpdateSettings = viewModel::updateSettings,
                 onFix = ::handleFix,
@@ -248,8 +242,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
             HomeScreen(
                 alarms = alarms,
                 settings = settings,
-                report = report,
-                checking = checking,
                 onAdd = {
                     openEditor(newAlarm(settings), isNew = true, duplicate = false)
                 },
@@ -267,10 +259,6 @@ private fun RadioAlarmAppRoot(openSafety: MutableStateFlow<Boolean>) {
                 onToggle = viewModel::setEnabled,
                 onTest = viewModel::testAlarm,
                 onSettings = { showSettings = true },
-                onRunCheck = {
-                    if (playback != null) viewModel.stopTest() else viewModel.testAlarm(nextAlarm)
-                },
-                onFix = ::handleFix,
                 playback = playback,
                 onStopTest = viewModel::stopTest,
                 updateInfo = updateInfo,

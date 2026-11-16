@@ -21,31 +21,22 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.BatteryAlert
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -61,7 +52,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -76,11 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import com.github.yeicor.radioalarmapp.alarm.CheckSeverity
 import com.github.yeicor.radioalarmapp.alarm.PlaybackSnapshot
-import com.github.yeicor.radioalarmapp.alarm.SafetyFix
-import com.github.yeicor.radioalarmapp.alarm.SafetyIssue
-import com.github.yeicor.radioalarmapp.alarm.SafetyReport
 import com.github.yeicor.radioalarmapp.data.Alarm
 import com.github.yeicor.radioalarmapp.data.AlarmOverride
 import com.github.yeicor.radioalarmapp.data.AlarmOverrides
@@ -95,7 +81,7 @@ import com.github.yeicor.radioalarmapp.ui.theme.Sunrise
 import com.github.yeicor.radioalarmapp.ui.theme.SunriseSoft
 import com.github.yeicor.radioalarmapp.ui.theme.TextPrimary
 import com.github.yeicor.radioalarmapp.ui.theme.TextSecondary
-import com.github.yeicor.radioalarmapp.ui.theme.Warning
+import com.github.yeicor.radioalarmapp.update.UpdateChannel
 import com.github.yeicor.radioalarmapp.update.UpdateInfo
 import com.github.yeicor.radioalarmapp.util.TimeText
 import kotlinx.coroutines.delay
@@ -107,8 +93,6 @@ import java.time.ZonedDateTime
 fun HomeScreen(
     alarms: List<Alarm>,
     settings: AppSettings,
-    report: SafetyReport?,
-    checking: Boolean,
     onAdd: () -> Unit,
     onEdit: (Alarm) -> Unit,
     onDuplicate: (Alarm) -> Unit,
@@ -116,8 +100,6 @@ fun HomeScreen(
     onToggle: (Alarm, Boolean) -> Unit,
     onTest: (Alarm) -> Unit,
     onSettings: () -> Unit,
-    onRunCheck: () -> Unit,
-    onFix: (SafetyFix) -> Unit,
     playback: PlaybackSnapshot? = null,
     onStopTest: () -> Unit = {},
     updateInfo: UpdateInfo? = null,
@@ -176,29 +158,14 @@ fun HomeScreen(
                         target = next.second,
                         override = nextOverride,
                         now = now,
-                        report = report,
                         onClick = { onEdit(next.first) },
-                        onRunCheck = onRunCheck,
                         playback = playback,
+                        onTestAlarm = { onTest(next.first) },
                         onStopTest = onStopTest,
-                        checking = checking,
                     )
                 }
             } else {
                 item { EmptyNextCard(onAdd = onAdd) }
-            }
-
-            if (!report?.isReady.orFalse() && !report?.issues.isNullOrEmpty()) {
-                item {
-                    SafetySummaryCard(
-                        report = report,
-                        onFix = onFix,
-                        onRunCheck = onRunCheck,
-                        playback = playback,
-                        onStopTest = onStopTest,
-                        checking = checking,
-                    )
-                }
             }
 
             if (alarms.isNotEmpty()) {
@@ -310,8 +277,7 @@ private fun HomeHeader(onSettings: () -> Unit) {
         HelpButton(
             title = "How Radio Alarm App works",
             text = "The alarm plays your radio stream and verifies that audio is really leaving the phone. " +
-                "If it fails, it tries local audio, the phone alarm sound and finally a built-in sound.\n\n" +
-                "A low-power check runs about ten times a day and notifies you if something could stop the alarm.",
+                "If it fails, it tries local audio, the phone alarm sound and finally a built-in sound.",
         )
         IconButton(onClick = onSettings) {
             Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = TextSecondary)
@@ -325,12 +291,10 @@ private fun NextAlarmCard(
     target: ZonedDateTime,
     override: AlarmOverride?,
     now: ZonedDateTime,
-    report: SafetyReport?,
     onClick: () -> Unit,
-    onRunCheck: () -> Unit,
     playback: PlaybackSnapshot?,
+    onTestAlarm: () -> Unit,
     onStopTest: () -> Unit,
-    checking: Boolean,
 ) {
     GradientCard(
         modifier = Modifier
@@ -346,15 +310,8 @@ private fun NextAlarmCard(
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.weight(1f))
-                val ready = report?.isReady == true && report.nextAlarmId == alarm.id
-                if (ready) {
-                    StatusPill("Ready", Mint, Icons.Rounded.CheckCircle)
-                } else {
-                    StatusPill(
-                        if (report == null) "Not checked" else "${report.warningCount} to review",
-                        if (report == null) TextSecondary else Warning,
-                        Icons.Rounded.Shield,
-                    )
+                if (playback != null) {
+                    StatusPill("Testing", Mint, Icons.Rounded.GraphicEq)
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -401,37 +358,45 @@ private fun NextAlarmCard(
             }
             Spacer(Modifier.height(18.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.09f))
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.Shield,
-                    contentDescription = null,
-                    tint = if (report?.isReady == true) Mint else Sunrise,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    when {
-                        playback != null -> "Playing test alarm…"
-                        report == null -> "Not checked yet"
-                        report.isReady -> "Last check passed"
-                        report.criticalCount > 0 -> "${report.criticalCount} critical"
-                        else -> "${report.warningCount} warning${if (report.warningCount == 1) "" else "s"}"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (playback != null) Mint else if (report?.isReady == true) Mint else TextSecondary,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    onClick = {
-                        if (playback != null) onStopTest() else onRunCheck()
-                    },
-                ) {
-                    Text(
-                        if (playback != null) "Stop test" else "Test alarm",
-                        color = if (playback != null) Coral else SunriseSoft,
-                        fontWeight = FontWeight.SemiBold,
+                if (playback != null) {
+                    Icon(
+                        Icons.Rounded.GraphicEq,
+                        contentDescription = null,
+                        tint = Mint,
+                        modifier = Modifier.size(18.dp),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Playing test alarm…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Mint,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onStopTest) {
+                        Text(
+                            "Stop test",
+                            color = Coral,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onTestAlarm) {
+                        Icon(
+                            Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            tint = SunriseSoft,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "Test alarm",
+                            color = SunriseSoft,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }
@@ -464,7 +429,7 @@ private fun HomeUpdateBanner(
                     color = TextPrimary,
                 )
                 Text(
-                    "Tap to download & install",
+                    if (updateInfo.channel == UpdateChannel.STABLE) "Official release · Tap to download" else "Nightly build · Direct via nightly.link",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                 )
@@ -495,93 +460,6 @@ private fun EmptyNextCard(onAdd: () -> Unit) {
                 Text("Create an alarm", color = Sunrise)
                 Spacer(Modifier.width(4.dp))
                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Sunrise, modifier = Modifier.size(18.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SafetySummaryCard(
-    report: SafetyReport,
-    onFix: (SafetyFix) -> Unit,
-    onRunCheck: () -> Unit,
-    playback: PlaybackSnapshot?,
-    onStopTest: () -> Unit,
-    checking: Boolean,
-) {
-    val top = report.issues.filter { it.severity >= CheckSeverity.WARNING }.take(2)
-    if (top.isEmpty()) return
-    GlassCard(accent = if (report.criticalCount > 0) Danger else Warning) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Next alarm check",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    onClick = {
-                        if (playback != null) onStopTest() else onRunCheck()
-                    },
-                ) {
-                    Text(
-                        if (playback != null) "Stop test" else "Test alarm",
-                        color = if (playback != null) Coral else Sunrise,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-            top.forEach { issue ->
-                IssueRow(issue = issue, onFix = onFix)
-            }
-        }
-    }
-}
-
-@Composable
-fun IssueRow(issue: SafetyIssue, onFix: (SafetyFix) -> Unit) {
-    val color = when (issue.severity) {
-        CheckSeverity.CRITICAL -> Danger
-        CheckSeverity.WARNING -> Warning
-        else -> Sky
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(top = 2.dp)
-                .size(28.dp)
-                .background(color.copy(alpha = 0.13f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                when {
-                    issue.id == "stream" -> Icons.Rounded.CloudOff
-                    issue.id == "battery" -> Icons.Rounded.BatteryAlert
-                    issue.severity == CheckSeverity.CRITICAL -> Icons.Rounded.Error
-                    else -> Icons.Rounded.WarningAmber
-                },
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(issue.title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Text(issue.message, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            if (issue.fix != SafetyFix.NONE) {
-                TextButton(
-                    onClick = { onFix(issue.fix) },
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp),
-                ) {
-                    Text(issue.fixLabel.ifBlank { "Fix" }, color = Sunrise, style = MaterialTheme.typography.labelLarge)
-                }
             }
         }
     }

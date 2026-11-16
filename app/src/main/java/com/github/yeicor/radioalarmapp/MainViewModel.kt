@@ -9,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.github.yeicor.radioalarmapp.alarm.AlarmScheduler
 import com.github.yeicor.radioalarmapp.alarm.AlarmService
 import com.github.yeicor.radioalarmapp.alarm.NotificationHelper
-import com.github.yeicor.radioalarmapp.alarm.SafetyChecker
 import com.github.yeicor.radioalarmapp.data.Alarm
 import com.github.yeicor.radioalarmapp.data.AlarmOverrides
 import com.github.yeicor.radioalarmapp.data.AlarmRepository
@@ -29,23 +28,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val alarms = repository.alarms
     val settings = repository.settings
-    val safetyReport = SafetyChecker.report
     val playback = AlarmService.playback
     val liveRms = AlarmService.liveRms
 
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
 
-    private val _checking = MutableStateFlow(false)
-    val checking: StateFlow<Boolean> = _checking.asStateFlow()
-
     init {
-        viewModelScope.launch {
-            val stale = System.currentTimeMillis() - SafetyChecker.lastCheckedAt(app) > 30 * 60 * 1000L
-            if (stale && AlarmOverrides.next(app, repository.alarms.value) != null) {
-                runCheck(notify = false)
-            }
-        }
         checkForUpdate(force = false)
     }
 
@@ -60,10 +49,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             AlarmScheduler.scheduleAll(app)
         } catch (t: Throwable) {
             Log.e("Radio Alarm App", "Could not reschedule after save", t)
-        }
-        if (saved.enabled) {
-            // Warn immediately after setting the alarm, not only on the periodic check.
-            runCheck(notify = true)
         }
         return saved
     }
@@ -81,7 +66,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.setEnabled(alarm.id, enabled)
         if (enabled) {
             AlarmScheduler.scheduleAll(app)
-            runCheck(notify = true)
         } else {
             AlarmService.stopIfActive(app, alarm.id)
             AlarmScheduler.cancelAlarm(app, alarm.id)
@@ -113,7 +97,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }.onFailure {
             Log.e("Radio Alarm App", "Could not start test alarm", it)
         }
-        runCheck(notify = false)
     }
 
     fun checkForUpdate(force: Boolean = false) {
@@ -129,18 +112,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissUpdate(info: UpdateInfo) {
         UpdateChecker.dismiss(app, info.versionLabel)
         _updateInfo.value = null
-    }
-
-    fun runCheck(notify: Boolean = false) {
-        if (_checking.value) return
-        viewModelScope.launch {
-            _checking.value = true
-            try {
-                SafetyChecker.checkAndNotify(app, notify = notify)
-            } finally {
-                _checking.value = false
-            }
-        }
     }
 
     fun stopTest() {

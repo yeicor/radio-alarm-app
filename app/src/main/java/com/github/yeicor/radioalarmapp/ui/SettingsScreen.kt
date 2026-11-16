@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,9 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -42,7 +39,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -73,7 +69,6 @@ import androidx.compose.ui.unit.dp
 import com.github.yeicor.radioalarmapp.BuildConfig
 import com.github.yeicor.radioalarmapp.alarm.PlaybackSnapshot
 import com.github.yeicor.radioalarmapp.alarm.SafetyFix
-import com.github.yeicor.radioalarmapp.alarm.SafetyReport
 import com.github.yeicor.radioalarmapp.audio.AudioSignal
 import com.github.yeicor.radioalarmapp.audio.LocalAudio
 import com.github.yeicor.radioalarmapp.data.Alarm
@@ -89,9 +84,6 @@ import com.github.yeicor.radioalarmapp.ui.theme.Warning
 import com.github.yeicor.radioalarmapp.update.UpdateChannel
 import com.github.yeicor.radioalarmapp.update.UpdateInfo
 import com.github.yeicor.radioalarmapp.util.TimeText
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZonedDateTime
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -99,9 +91,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     settings: AppSettings,
     permissions: ReliabilityPermissions,
-    report: SafetyReport?,
     nextAlarm: Alarm?,
-    checking: Boolean,
     onBack: () -> Unit,
     onUpdateSettings: (AppSettings) -> Unit,
     onFix: (SafetyFix) -> Unit,
@@ -115,7 +105,6 @@ fun SettingsScreen(
     onCheckUpdate: () -> Unit,
 ) {
     val context = LocalContext.current
-    var showAllIssues by remember { mutableStateOf(false) }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -158,10 +147,9 @@ fun SettingsScreen(
                 )
                 HelpButton(
                     title = "Reliability & Settings",
-                    text = "Checks run on-demand when opening the app, saving alarms, or tapping Test.\n\n" +
-                        "The alarm retries the radio twice, then uses local audio, the phone alarm " +
-                        "sound and finally a built-in sound. Software volume slider lets you lower the " +
-                        "volume below the phone's minimum.",
+                    text = "The alarm retries the radio stream with automatic multi-tier fallback to local audio, " +
+                        "the phone alarm sound, and a built-in sound if silence or network issues occur.\n\n" +
+                        "Software volume slider lets you lower the volume below the phone's minimum.",
                 )
             }
         }
@@ -278,19 +266,6 @@ fun SettingsScreen(
                             }
                         }
                     }
-
-                    if (report != null) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            buildString {
-                                append("Last checked ${relativeTime(report.checkedAt)}")
-                                report.batteryPercent?.let { append(" · Battery $it%") }
-                                report.streamReachable?.let { append(if (it) " · Radio OK" else " · Radio unreachable") }
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                        )
-                    }
                 }
             }
         }
@@ -376,41 +351,7 @@ fun SettingsScreen(
             }
         }
 
-        // 4. Reliability Findings (if issues exist)
-        if (!report?.issues.isNullOrEmpty()) {
-            item {
-                GlassCard(accent = if (report.criticalCount > 0) Danger else Warning) {
-                    Column(Modifier.padding(18.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Findings",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = TextPrimary,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        val visible = if (showAllIssues) report.issues else report.issues.take(3)
-                        visible.forEachIndexed { index, issue ->
-                            if (index > 0) HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 8.dp))
-                            FindingRow(issue = issue, onFix = { onFix(issue.fix) })
-                        }
-                        if (report.issues.size > 3) {
-                            TextButton(
-                                onClick = { showAllIssues = !showAllIssues },
-                                modifier = Modifier.padding(top = 4.dp),
-                            ) {
-                                Text(
-                                    if (showAllIssues) "Show fewer" else "Show ${report.issues.size - 3} more",
-                                    color = SunriseSoft,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 5. Reliability permissions & settings
+        // 4. Reliability permissions & settings
         item {
             GlassCard {
                 Column(Modifier.padding(18.dp)) {
@@ -566,7 +507,7 @@ private fun UpdateBanner(
                         color = TextPrimary,
                     )
                     Text(
-                        if (updateInfo.channel == UpdateChannel.STABLE) "Official stable release" else "Nightly CI artifact",
+                        if (updateInfo.channel == UpdateChannel.STABLE) "Official stable release" else "Nightly CI build (direct via nightly.link)",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                     )
@@ -661,26 +602,6 @@ private fun AudibilityIndicator(
 }
 
 @Composable
-private fun FindingRow(issue: com.github.yeicor.radioalarmapp.alarm.SafetyIssue, onFix: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(issue.title, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
-            Text(issue.message, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        }
-        if (issue.fixLabel.isNotBlank()) {
-            TextButton(onClick = onFix) {
-                Text(issue.fixLabel, color = Sunrise)
-            }
-        }
-    }
-}
-
-@Composable
 private fun PermissionRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
@@ -763,20 +684,6 @@ private fun SettingsSlider(
                 inactiveTrackColor = Color.White.copy(alpha = 0.12f),
             ),
         )
-    }
-}
-
-private fun relativeTime(at: Long): String {
-    val minutes = ((System.currentTimeMillis() - at) / 60_000L).coerceAtLeast(0)
-    return when {
-        minutes < 1 -> "just now"
-        minutes < 60 -> "$minutes min ago"
-        minutes < 24 * 60 -> "${minutes / 60} h ago"
-        else -> {
-            val date = Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault())
-            val now = ZonedDateTime.now()
-            "${TimeText.relativeDay(date, now)} at ${date.format(Alarm.TIME_FORMAT)}"
-        }
     }
 }
 
