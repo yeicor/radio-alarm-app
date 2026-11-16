@@ -104,7 +104,7 @@ class AlarmRepository private constructor(context: Context) {
         val stored = prefs.getString(KEY_SETTINGS, null)
         val json = runCatching { stored?.let(::JSONObject) }.getOrNull()
         return AppSettings(
-            defaultRampSeconds = json?.optInt("defaultRampSeconds", 30) ?: 30,
+            defaultRampSeconds = json?.optInt("defaultRampSeconds", 5) ?: 5,
             defaultSnoozeMinutes = json?.optInt("defaultSnoozeMinutes", 5) ?: 5,
             defaultMaxSnoozes = json?.optInt("defaultMaxSnoozes", 3) ?: 3,
             defaultVibrate = json?.optBoolean("defaultVibrate", true) ?: true,

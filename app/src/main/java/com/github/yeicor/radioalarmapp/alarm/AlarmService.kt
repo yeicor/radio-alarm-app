@@ -228,7 +228,6 @@ class AlarmService : Service() {
         // every source inaudible even though the user's chosen volume is non-zero.
         runCatching { AudioManagerCompat.unmuteAlarmStream(audioManager) }
             .onFailure { Log.e(TAG, "Could not unmute alarm stream", it) }
-        startVibration(alarm)
         startRemotePlayback()
 
         val initialStatus = if (alarm.streamUrl.isNotBlank()) "Starting radio…" else "Starting backup audio…"
@@ -590,6 +589,7 @@ class AlarmService : Service() {
         if (alarm.rampSeconds <= 0) {
             currentVolume = 1f
             applyPlayerVolume()
+            startVibration(alarm)
             return
         }
         rampJob = scope.launch {
@@ -612,7 +612,10 @@ class AlarmService : Service() {
                     )
                 }
                 if (fraction >= 1f) break
-                delay(500)
+                delay(100)
+            }
+            if (isActive) {
+                startVibration(alarm)
             }
         }
     }

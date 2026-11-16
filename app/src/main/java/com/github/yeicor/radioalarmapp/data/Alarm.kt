@@ -20,7 +20,7 @@ data class Alarm(
     val enabled: Boolean = true,
     val streamUrl: String = DEFAULT_STREAM_URL,
     val localFallbackUris: List<String> = emptyList(),
-    val rampSeconds: Int = 30,
+    val rampSeconds: Int = 5,
     val snoozeMinutes: Int = 5,
     val maxSnoozes: Int = 3,
     val vibrate: Boolean = true,
@@ -100,7 +100,7 @@ data class Alarm(
                 enabled = json.optBoolean("enabled", true),
                 streamUrl = json.optString("streamUrl", DEFAULT_STREAM_URL),
                 localFallbackUris = uris,
-                rampSeconds = json.optInt("rampSeconds", 30).coerceIn(0, 300),
+                rampSeconds = json.optInt("rampSeconds", 5).coerceIn(0, 60),
                 snoozeMinutes = json.optInt("snoozeMinutes", 5).coerceIn(1, 60),
                 maxSnoozes = json.optInt("maxSnoozes", 3).coerceIn(0, 10),
                 vibrate = json.optBoolean("vibrate", true),
@@ -117,7 +117,7 @@ data class Alarm(
 }
 
 data class AppSettings(
-    val defaultRampSeconds: Int = 30,
+    val defaultRampSeconds: Int = 5,
     val defaultSnoozeMinutes: Int = 5,
     val defaultMaxSnoozes: Int = 3,
     val defaultVibrate: Boolean = true,

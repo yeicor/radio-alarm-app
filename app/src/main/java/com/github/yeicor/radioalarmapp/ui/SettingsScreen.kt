@@ -444,8 +444,8 @@ fun SettingsScreen(
                         title = "Volume ramp-up",
                         value = settings.defaultRampSeconds,
                         valueText = if (settings.defaultRampSeconds == 0) "Instant" else "${settings.defaultRampSeconds}s",
-                        range = 0f..180f,
-                        steps = 35,
+                        range = 0f..60f,
+                        steps = 59,
                         onChange = { onUpdateSettings(settings.copy(defaultRampSeconds = it.roundToInt())) },
                     )
                     SettingsSlider(

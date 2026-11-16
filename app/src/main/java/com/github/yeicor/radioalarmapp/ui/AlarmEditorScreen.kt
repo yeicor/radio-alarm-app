@@ -499,8 +499,8 @@ fun AlarmEditorScreen(
                             title = "Volume ramp-up",
                             value = rampSeconds,
                             valueText = if (rampSeconds == 0) "Instant" else "${rampSeconds}s",
-                            range = 0f..180f,
-                            steps = 35,
+                            range = 0f..60f,
+                            steps = 59,
                             onChange = { rampSeconds = it.roundToInt() },
                         )
                         ValueSlider(
