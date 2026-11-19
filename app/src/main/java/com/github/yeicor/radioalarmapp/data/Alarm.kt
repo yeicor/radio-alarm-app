@@ -125,6 +125,7 @@ data class AppSettings(
     val systemAlarmSoundUri: String? = null,
     val softwareVolumePercent: Int = 100,     // 0–100, applied as software multiplier
     val silenceThresholdPercent: Int = 50,    // % of SILENCE_RMS used as audibility threshold
+    val autoBalance: Boolean = true,          // lift quiet radio/music/alarm audio
     val updateChannel: UpdateChannel = UpdateChannel.STABLE,
 )
 

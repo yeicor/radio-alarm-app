@@ -77,7 +77,10 @@ object LocalAudio {
             RingtoneManager.TYPE_NOTIFICATION,
             RingtoneManager.TYPE_RINGTONE,
         ).forEach { type ->
-            runCatching { RingtoneManager.getDefaultUri(type) }.getOrNull()?.let(candidates::add)
+            val uri = runCatching { RingtoneManager.getActualDefaultRingtoneUri(context, type) }
+                .getOrNull()
+                ?: runCatching { RingtoneManager.getDefaultUri(type) }.getOrNull()
+            uri?.let(candidates::add)
         }
         return candidates.map { ResolvedAudio(it, "Phone alarm sound") }
     }

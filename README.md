@@ -12,7 +12,7 @@ output, ramps its own player volume, and falls back through local audio, the pho
 sound and a bundled sound.
 
 - Package: `com.github.yeicor.radioalarmapp`
-- Version: 0.0.5 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
+- Version: 0.0.9 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
 - Repository: <https://github.com/yeicor/radio-alarm-app>
 
 ## Features
@@ -25,12 +25,16 @@ sound and a bundled sound.
 - **Silence fails over** – a source that produces no audible samples for 10 seconds is treated
   as broken, so a radio that answers but plays silence never counts as success.
 - **Retries and fallback** – 3 stream attempts in total, then up to 30 local tracks (tried
-  quickly), then the phone's alarm sound, then a bundled sound that works offline.
+  quickly), then the phone's alarm sound, then a bundled sound that works offline. With
+  several local files or a folder, each finished song is followed by a different random one;
+  a single file still loops.
 - **Volume ramp** – configurable 0–180 s ramp of the app's own player volume from 0% to 100%.
   The phone's alarm-stream volume is never changed; a muted stream is unmuted so the alarm can
   be heard.
 - **Alarm-volume warnings** – muted/zero is critical and below 30% is a warning, shown
   immediately after saving or enabling an alarm and by the automatic checks.
+- **Auto audio balancing** – optionally lifts quiet radio, local music and phone alarm audio
+  towards a comfortable level (up to 4×, with peak limiting). Loud audio is left unchanged.
 - **Snooze** – 1–30 minutes and 0–5 snoozes per alarm, persisted across reboots.
 - **Widget** – a two-line card with the next alarm, an alarm icon and three icon buttons:
   `−10 min`, `skip` and `+10 min`; after a skip the middle button becomes `undo`. It starts at
@@ -115,7 +119,8 @@ buttons.
    ramps from 0% to 100% of the configured alarm volume. Decoded PCM is checked continuously;
    silence for 10 seconds or a playback error counts as a failure, and failures are retried
    twice.
-4. If the radio still fails, up to 30 local tracks are tried quickly.
+4. If the radio still fails, up to 30 local tracks are tried quickly; when a track ends, a
+   different random track follows.
 5. Then the phone's alarm sound (if enabled for that alarm), using the platform `Ringtone` API
    and the same ramp.
 6. Finally the bundled sound. If even that fails, the app keeps retrying rather than giving
@@ -130,13 +135,16 @@ If a stream fails, is silent, or encounters network drops, the multi-tier fallba
 switches between:
 
 - Radio stream retry
-- Local music folder / audio files
-- Phone alarm ringtone
+- Local music folder / audio files (random next track when one ends)
+- Phone alarm ringtone (decoded and checked before it plays)
 - Embedded wake sound
 
-Software volume and silence detection threshold can be configured from Settings, with a live VU
-meter when testing alarms. Updates are checked automatically on app launch and immediately after
-dismissing an alarm, supporting both stable releases and nightly builds (direct via nightly.link).
+Every tier uses the same checks: playback state, active alarm audio, alarm volume, and audible
+samples (or a decoded pre-check for the platform ringtone). A failing source is retried or the
+next fallback starts. Software volume, silence threshold and auto audio balancing can be
+configured from Settings, with a live VU meter when testing alarms. Updates are checked
+automatically on app launch and immediately after dismissing an alarm, supporting both stable
+releases and nightly builds (direct via nightly.link).
 
 ## Building and CI
 

@@ -69,6 +69,7 @@ class AlarmRepository private constructor(context: Context) {
             put("systemAlarmSoundUri", settings.systemAlarmSoundUri ?: "")
             put("softwareVolumePercent", settings.softwareVolumePercent)
             put("silenceThresholdPercent", settings.silenceThresholdPercent)
+            put("autoBalance", settings.autoBalance)
             put("updateChannel", settings.updateChannel.name)
         }
         prefs.edit().putString(KEY_SETTINGS, json.toString()).commit()
@@ -112,6 +113,7 @@ class AlarmRepository private constructor(context: Context) {
             systemAlarmSoundUri = if (json?.has("systemAlarmSoundUri") == true) json.optString("systemAlarmSoundUri").ifBlank { null } else null,
             softwareVolumePercent = json?.optInt("softwareVolumePercent", 100) ?: 100,
             silenceThresholdPercent = json?.optInt("silenceThresholdPercent", 50) ?: 50,
+            autoBalance = json?.optBoolean("autoBalance", true) ?: true,
             updateChannel = runCatching {
                 json?.optString("updateChannel")?.let { enumValueOf<UpdateChannel>(it) }
             }.getOrNull() ?: UpdateChannel.STABLE,

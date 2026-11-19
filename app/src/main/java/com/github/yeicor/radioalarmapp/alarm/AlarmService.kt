@@ -29,6 +29,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.github.yeicor.radioalarmapp.BuildConfig
+import com.github.yeicor.radioalarmapp.audio.AudioSampleAnalyzer
 import com.github.yeicor.radioalarmapp.audio.AudioSignal
 import com.github.yeicor.radioalarmapp.audio.LocalAudio
 import com.github.yeicor.radioalarmapp.audio.ResolvedAudio
@@ -48,8 +49,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
 enum class AudioTier { STREAM, LOCAL, SYSTEM, EMBEDDED }
 
@@ -141,6 +144,8 @@ class AlarmService : Service() {
     private var audioPlaybackActive = false
     private var systemRingtone: Ringtone? = null
     private var systemLoopJob: Job? = null
+    private var systemAudible = true
+    private var systemGain = 1f
 
     private val audioCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
@@ -258,7 +263,11 @@ class AlarmService : Service() {
         val dataSource = DefaultDataSource.Factory(this, http)
         val mediaSource = DefaultMediaSourceFactory(dataSource)
         player = ExoPlayer.Builder(this)
-            .setRenderersFactory(SilenceRenderersFactory(this, silenceMonitor))
+            .setRenderersFactory(
+                SilenceRenderersFactory(this, silenceMonitor) {
+                    repository.settings.value.autoBalance
+                },
+            )
             .setMediaSourceFactory(mediaSource)
             .build()
             .apply {
@@ -277,7 +286,7 @@ class AlarmService : Service() {
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_ENDED) {
+                        if (playbackState == Player.STATE_ENDED && currentTier != AudioTier.LOCAL) {
                             handleSourceFailure("Audio source ended")
                         }
                     }
@@ -339,8 +348,19 @@ class AlarmService : Service() {
         consecutiveFailures = 0
         publish(AudioTier.LOCAL, source.label, "Playing local backup…", false)
         updateNotification("Radio unavailable • playing local backup")
-        playUri(source.uri.toString(), repeat = true, label = source.label)
+        // A single file loops; with several files the next one is chosen when this ends.
+        playUri(source.uri.toString(), repeat = localSources.size == 1, label = source.label)
         startWatchdog(lambdaLabel = { source.label })
+    }
+
+    /** Moves to a different random local track, never replaying the one that just ended. */
+    private fun playNextLocalRandom() {
+        if (localSources.size <= 1) {
+            playLocal()
+            return
+        }
+        localIndex = (localIndex + 1 + Random.nextInt(localSources.size - 1)) % localSources.size
+        playLocal()
     }
 
     private fun playSystemOrEmbedded() {
@@ -349,10 +369,29 @@ class AlarmService : Service() {
             currentTier = AudioTier.SYSTEM
             lastVerified = false
             consecutiveFailures = 0
-            publish(AudioTier.SYSTEM, source.label, "Playing phone alarm sound…", false)
-            updateNotification("Playing phone alarm sound")
-            playSystemRingtone(source)
-            startWatchdog(lambdaLabel = { source.label })
+            publish(AudioTier.SYSTEM, source.label, "Checking phone alarm sound…", false)
+            updateNotification("Checking phone alarm sound")
+            scope.launch {
+                val analysis = withContext(Dispatchers.IO) {
+                    AudioSampleAnalyzer.analyze(this@AlarmService, source.uri, timeoutMs = 2_000)
+                }
+                val gain = if (repository.settings.value.autoBalance) {
+                    AudioSignal.balanceGain(analysis.rms)
+                } else {
+                    1f
+                }
+                systemGain = gain
+                systemAudible = !analysis.analyzed ||
+                    AudioSignal.isAudible(analysis.rms * gain, getSilenceThreshold())
+                if (!systemAudible) {
+                    handleSourceFailure("Phone alarm sound is silent")
+                    return@launch
+                }
+                publish(AudioTier.SYSTEM, source.label, "Playing phone alarm sound…", false)
+                updateNotification("Playing phone alarm sound")
+                playSystemRingtone(source)
+                startWatchdog(lambdaLabel = { source.label })
+            }
         } else {
             playEmbedded()
         }
@@ -448,7 +487,7 @@ class AlarmService : Service() {
         lastStatus = ""
         rmsJob = scope.launch {
             while (isActive) {
-                _liveRms.value = silenceMonitor.currentRms
+                _liveRms.value = silenceMonitor.currentRms * silenceMonitor.balanceGain
                 delay(100)
             }
         }
@@ -463,7 +502,7 @@ class AlarmService : Service() {
                 // The ramp owns the player volume; re-apply the current value in case a
                 // media session or audio policy changed it behind our back.
                 enforcePlayerVolume()
-                _liveRms.value = silenceMonitor.currentRms
+                _liveRms.value = silenceMonitor.currentRms * silenceMonitor.balanceGain
                 val streamVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
                 val streamMuted = runCatching { audioManager.isStreamMute(AudioManager.STREAM_ALARM) }
                     .getOrDefault(false)
@@ -472,7 +511,11 @@ class AlarmService : Service() {
                 val nowElapsed = SystemClock.elapsedRealtime()
                 val silenceReference = max(silenceMonitor.lastAudibleAtMs, sourceStartedElapsed)
                 val silentFor = nowElapsed - silenceReference
-                val audibleRecently = currentTier == AudioTier.SYSTEM || silentFor <= 2_000L
+                val audibleRecently = if (currentTier == AudioTier.SYSTEM) {
+                    systemAudible
+                } else {
+                    silentFor <= 2_000L
+                }
                 val verifiedNow = sourcePlaying && playbackActive && volumeOk && audibleRecently
                 if (!verifiedNow && consecutiveFailures % 3 == 0) {
                     Log.d(
@@ -509,7 +552,11 @@ class AlarmService : Service() {
                     consecutiveFailures = 0
                 }
                 if (player.playbackState == Player.STATE_ENDED) {
-                    handleSourceFailure("Audio source ended")
+                    if (currentTier == AudioTier.LOCAL && localSources.size > 1) {
+                        playNextLocalRandom()
+                    } else {
+                        handleSourceFailure("Audio source ended")
+                    }
                     return@launch
                 }
                 delay(1_000)
@@ -639,7 +686,9 @@ class AlarmService : Service() {
             runCatching { player.volume = effective }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            systemRingtone?.let { runCatching { it.setVolume(effective) } }
+            systemRingtone?.let {
+                runCatching { it.setVolume((effective * systemGain).coerceIn(0f, 1f)) }
+            }
         }
         silenceMonitor.volumeFactor = softVol
         silenceMonitor.threshold = getSilenceThreshold()

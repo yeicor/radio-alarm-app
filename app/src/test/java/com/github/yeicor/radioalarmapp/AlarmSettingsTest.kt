@@ -38,7 +38,20 @@ class AlarmSettingsTest {
         val settings = AppSettings()
         assertEquals(100, settings.softwareVolumePercent)
         assertEquals(50, settings.silenceThresholdPercent)
+        assertTrue(settings.autoBalance)
         assertEquals(UpdateChannel.STABLE, settings.updateChannel)
+    }
+
+    @Test
+    fun audioSignal_balanceGain_boostsQuietAudioAndLeavesLoudAudioAlone() {
+        assertEquals(1f, AudioSignal.balanceGain(0.2f), 0.001f)
+        assertEquals(2f, AudioSignal.balanceGain(0.04f), 0.001f)
+        assertEquals(AudioSignal.BALANCE_MAX_GAIN, AudioSignal.balanceGain(0.001f), 0.001f)
+    }
+
+    @Test
+    fun audioSignal_balanceGain_respectsPeakLimit() {
+        assertEquals(1f, AudioSignal.balanceGain(0.01f, peak = 0.95f), 0.001f)
     }
 
     @Test

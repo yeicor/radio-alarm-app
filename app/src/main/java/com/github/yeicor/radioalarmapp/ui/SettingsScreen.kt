@@ -51,6 +51,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -223,8 +225,34 @@ fun SettingsScreen(
                         "Radio audio below this threshold is treated as silent and triggers fallbacks. Lower values are more sensitive.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
-                        modifier = Modifier.padding(bottom = 14.dp),
+                        modifier = Modifier.padding(bottom = 12.dp),
                     )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Auto audio balancing",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                "Lifts quiet radio, music and phone alarm audio up to 4×. Loud audio is left unchanged.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = settings.autoBalance,
+                            onCheckedChange = { onUpdateSettings(settings.copy(autoBalance = it)) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF211307),
+                                checkedTrackColor = Sunrise,
+                            ),
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
 
                     // Visual indicator while testing
                     if (playback != null) {

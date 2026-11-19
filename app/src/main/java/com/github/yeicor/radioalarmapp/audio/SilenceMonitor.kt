@@ -31,6 +31,9 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
     var volumeFactor: Float = 1f
 
     @Volatile
+    var balanceGain: Float = 1f
+
+    @Volatile
     var threshold: Float = AudioSignal.SILENCE_RMS
 
     private var encoding = AudioFormat.ENCODING_PCM_16BIT
@@ -42,7 +45,7 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
     override fun handleBuffer(buffer: ByteBuffer) {
         val r = AudioSignal.rms(buffer, encoding)
         currentRms = if (currentRms == 0f) r else (currentRms * 0.7f + r * 0.3f)
-        val effectiveRms = r * volumeFactor
+        val effectiveRms = r * volumeFactor * balanceGain
         if (AudioSignal.isAudible(effectiveRms, threshold)) {
             lastAudibleAtMs = SystemClock.elapsedRealtime()
         }
@@ -51,6 +54,7 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
     fun reset() {
         lastAudibleAtMs = 0L
         currentRms = 0f
+        balanceGain = 1f
     }
 }
 
@@ -63,14 +67,19 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
 class SilenceRenderersFactory(
     context: Context,
     private val monitor: SilenceMonitor,
+    private val balanceEnabled: () -> Boolean = { false },
 ) : DefaultRenderersFactory(context) {
+    private val balance = AutoBalanceProcessor(balanceEnabled) { gain ->
+        monitor.balanceGain = gain
+    }
+
     @Suppress("DEPRECATION")
     override fun buildAudioSink(
         context: Context,
         enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean,
     ): AudioSink = DefaultAudioSink.Builder(context)
-        .setAudioProcessors(arrayOf<AudioProcessor>(TeeAudioProcessor(monitor)))
+        .setAudioProcessors(arrayOf<AudioProcessor>(TeeAudioProcessor(monitor), balance))
         .setEnableFloatOutput(enableFloatOutput)
         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
         .setAudioOffloadSupportProvider { _, _ -> AudioOffloadSupport.DEFAULT_UNSUPPORTED }
