@@ -13,11 +13,14 @@ import kotlin.math.sqrt
 object AudioSignal {
     const val SILENCE_RMS = 0.003f
 
-    /** Reasonable loudness for alarm audio; quieter sources are boosted towards it. */
+    /** Reasonable loudness for alarm audio; quieter sources are boosted, louder ones cut. */
     const val BALANCE_TARGET_RMS = 0.08f
 
     /** Never boost more than this (about +12 dB), so quiet audio stays natural. */
     const val BALANCE_MAX_GAIN = 4f
+
+    /** Never cut more than this (about -12 dB), so a loud source is not silenced. */
+    const val BALANCE_MIN_GAIN = 0.25f
 
     private const val MAX_SAMPLES = 16_384
 
@@ -102,13 +105,19 @@ object AudioSignal {
     }
 
     /**
-     * Gain that lifts a quiet source towards [BALANCE_TARGET_RMS] without clipping its
-     * peaks and without ever exceeding [BALANCE_MAX_GAIN]. Loud sources are left alone.
+     * Gain that moves a source towards [BALANCE_TARGET_RMS]. Quiet audio is boosted only as
+     * far as its peaks allow; loud audio is cut. Both directions are capped so the result
+     * stays natural and the alarm is never silenced.
      */
     fun balanceGain(rms: Float, peak: Float = 0f): Float {
         if (rms <= 0.0001f) return 1f
-        val rmsGain = BALANCE_TARGET_RMS / rms
-        val peakGain = if (peak > 0.0001f) 0.95f / peak else BALANCE_MAX_GAIN
-        return minOf(rmsGain, peakGain, BALANCE_MAX_GAIN).coerceAtLeast(1f)
+        val desired = BALANCE_TARGET_RMS / rms
+        val gain = if (desired > 1f) {
+            val peakGain = if (peak > 0.0001f) 0.95f / peak else BALANCE_MAX_GAIN
+            minOf(desired, peakGain)
+        } else {
+            desired
+        }
+        return gain.coerceIn(BALANCE_MIN_GAIN, BALANCE_MAX_GAIN)
     }
 }

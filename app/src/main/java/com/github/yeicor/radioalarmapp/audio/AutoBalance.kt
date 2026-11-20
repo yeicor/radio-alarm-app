@@ -8,9 +8,9 @@ import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 
 /**
- * Lifts quiet decoded audio towards a comfortable level. The gain is derived from each
- * buffer's RMS and peak, capped at [AudioSignal.BALANCE_MAX_GAIN] and limited so peaks do
- * not clip. Loud sources pass through unchanged.
+ * Normalizes decoded audio towards a stable level. The gain is derived per buffer from its
+ * RMS and peak, then capped and smoothed so quiet and loud intervals converge without
+ * pumping or clipping. Only gain is applied, so pitch and intonation are untouched.
  */
 @OptIn(UnstableApi::class)
 class AutoBalanceProcessor(
@@ -48,8 +48,8 @@ class AutoBalanceProcessor(
         } else {
             1f
         }
-        // Rise quickly so quiet audio becomes audible, fall gently to avoid pumping.
-        smoothedGain += (target - smoothedGain) * if (target > smoothedGain) 0.35f else 0.08f
+        // Lower quickly when an interval gets loud, raise gently when it gets quiet.
+        smoothedGain += (target - smoothedGain) * if (target < smoothedGain) 0.35f else 0.10f
         currentGain = smoothedGain
         onGainChanged(smoothedGain)
 
@@ -84,11 +84,9 @@ class AutoBalanceProcessor(
         output.flip()
     }
 
-    override fun onFlush() {
-        smoothedGain = 1f
-        currentGain = 1f
-        onGainChanged(1f)
-    }
+    // Keep the gain across track/source changes so the new source starts at the level the
+    // previous one ended with instead of jumping back to full volume.
+    override fun onFlush() = Unit
 
     override fun onReset() {
         smoothedGain = 1f

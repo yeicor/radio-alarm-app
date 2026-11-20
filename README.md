@@ -12,7 +12,7 @@ output, ramps its own player volume, and falls back through local audio, the pho
 sound and a bundled sound.
 
 - Package: `com.github.yeicor.radioalarmapp`
-- Version: 0.0.9 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
+- Version: 0.0.10 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
 - Repository: <https://github.com/yeicor/radio-alarm-app>
 
 ## Features
@@ -33,8 +33,9 @@ sound and a bundled sound.
   be heard.
 - **Alarm-volume warnings** – muted/zero is critical and below 30% is a warning, shown
   immediately after saving or enabling an alarm and by the automatic checks.
-- **Auto audio balancing** – optionally lifts quiet radio, local music and phone alarm audio
-  towards a comfortable level (up to 4×, with peak limiting). Loud audio is left unchanged.
+- **Auto audio balancing** – optionally keeps radio, local music and phone alarm audio near a
+  stable level: quiet audio is lifted up to 4× and loud intervals are lowered to at most 25%,
+  with peak limiting and chunk-based gain that preserves pitch and intonation.
 - **Snooze** – 1–30 minutes and 0–5 snoozes per alarm, persisted across reboots.
 - **Widget** – a two-line card with the next alarm, an alarm icon and three icon buttons:
   `−10 min`, `skip` and `+10 min`; after a skip the middle button becomes `undo`. It starts at
@@ -141,8 +142,10 @@ switches between:
 
 Every tier uses the same checks: playback state, active alarm audio, alarm volume, and audible
 samples (or a decoded pre-check for the platform ringtone). A failing source is retried or the
-next fallback starts. Software volume, silence threshold and auto audio balancing can be
-configured from Settings, with a live VU meter when testing alarms. Updates are checked
+next fallback starts. Auto audio balancing normalizes every source to the same target with
+chunk-based gain, so switching sources or loud/quiet intervals does not cause surprises.
+Software volume, silence threshold and auto audio balancing can be configured from Settings,
+with a live VU meter when testing alarms. Updates are checked
 automatically on app launch and immediately after dismissing an alarm, supporting both stable
 releases and nightly builds (direct via nightly.link).
 

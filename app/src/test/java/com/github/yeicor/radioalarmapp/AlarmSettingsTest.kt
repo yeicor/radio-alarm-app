@@ -43,8 +43,10 @@ class AlarmSettingsTest {
     }
 
     @Test
-    fun audioSignal_balanceGain_boostsQuietAudioAndLeavesLoudAudioAlone() {
-        assertEquals(1f, AudioSignal.balanceGain(0.2f), 0.001f)
+    fun audioSignal_balanceGain_normalizesQuietAndLoudAudio() {
+        assertEquals(0.4f, AudioSignal.balanceGain(0.2f), 0.001f)
+        assertEquals(0.5f, AudioSignal.balanceGain(0.16f), 0.001f)
+        assertEquals(AudioSignal.BALANCE_MIN_GAIN, AudioSignal.balanceGain(0.64f), 0.001f)
         assertEquals(2f, AudioSignal.balanceGain(0.04f), 0.001f)
         assertEquals(AudioSignal.BALANCE_MAX_GAIN, AudioSignal.balanceGain(0.001f), 0.001f)
     }

@@ -54,7 +54,6 @@ class SilenceMonitor : TeeAudioProcessor.AudioBufferSink {
     fun reset() {
         lastAudibleAtMs = 0L
         currentRms = 0f
-        balanceGain = 1f
     }
 }
 

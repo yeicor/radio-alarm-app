@@ -236,7 +236,7 @@ fun SettingsScreen(
                                 color = TextPrimary,
                             )
                             Text(
-                                "Lifts quiet radio, music and phone alarm audio up to 4×. Loud audio is left unchanged.",
+                                "Keeps radio, music and phone alarm audio near a stable level: lifts quiet audio up to 4× and lowers loud audio down to 25%.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary,
                             )
