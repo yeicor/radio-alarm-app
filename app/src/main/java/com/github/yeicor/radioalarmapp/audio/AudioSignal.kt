@@ -2,6 +2,7 @@ package com.github.yeicor.radioalarmapp.audio
 
 import android.media.AudioFormat
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.sqrt
 
 /**
@@ -25,7 +26,8 @@ object AudioSignal {
     private const val MAX_SAMPLES = 16_384
 
     fun rms(buffer: ByteBuffer, encoding: Int): Float {
-        val copy = buffer.duplicate()
+        // duplicate() resets the order flag to big-endian; PCM here is native-endian.
+        val copy = buffer.duplicate().order(ByteOrder.nativeOrder())
         return when (encoding) {
             AudioFormat.ENCODING_PCM_FLOAT -> {
                 val samples = copy.asFloatBuffer()
@@ -67,7 +69,7 @@ object AudioSignal {
     fun isAudible(rms: Float, threshold: Float = SILENCE_RMS): Boolean = rms >= threshold
 
     fun peak(buffer: ByteBuffer, encoding: Int): Float {
-        val copy = buffer.duplicate()
+        val copy = buffer.duplicate().order(ByteOrder.nativeOrder())
         return when (encoding) {
             AudioFormat.ENCODING_PCM_FLOAT -> {
                 val samples = copy.asFloatBuffer()

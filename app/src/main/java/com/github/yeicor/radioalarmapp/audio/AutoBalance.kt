@@ -6,11 +6,17 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * Normalizes decoded audio towards a stable level. The gain is derived per buffer from its
  * RMS and peak, then capped and smoothed so quiet and loud intervals converge without
  * pumping or clipping. Only gain is applied, so pitch and intonation are untouched.
+ *
+ * PCM buffers handed to audio processors are always in native byte order, but
+ * [ByteBuffer.duplicate] resets the buffer's order flag to big-endian. Every view created
+ * here therefore restores [ByteOrder.nativeOrder] explicitly; otherwise the samples are
+ * read byte-swapped and playback turns into white noise.
  */
 @OptIn(UnstableApi::class)
 class AutoBalanceProcessor(
@@ -53,10 +59,10 @@ class AutoBalanceProcessor(
         currentGain = smoothedGain
         onGainChanged(smoothedGain)
 
-        val output = replaceOutputBuffer(size)
+        val output = replaceOutputBuffer(size).order(ByteOrder.nativeOrder())
         when (encoding) {
             AudioFormat.ENCODING_PCM_FLOAT -> {
-                val samples = inputBuffer.duplicate().asFloatBuffer()
+                val samples = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer()
                 val out = output.asFloatBuffer()
                 while (samples.hasRemaining()) {
                     out.put((samples.get() * smoothedGain).coerceIn(-1f, 1f))
@@ -72,7 +78,7 @@ class AutoBalanceProcessor(
             }
 
             else -> {
-                val samples = inputBuffer.duplicate().asShortBuffer()
+                val samples = inputBuffer.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer()
                 val out = output.asShortBuffer()
                 while (samples.hasRemaining()) {
                     out.put((samples.get() * smoothedGain).toInt().coerceIn(-32_768, 32_767).toShort())
