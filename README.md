@@ -12,7 +12,7 @@ output, ramps its own player volume, and falls back through local audio, the pho
 sound and a bundled sound.
 
 - Package: `com.github.yeicor.radioalarmapp`
-- Version: 0.0.11 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
+- Version: 0.0.12 · Min Android 8.0 (API 26) · targetSdk 36 · compileSdk 37.0
 - Repository: <https://github.com/yeicor/radio-alarm-app>
 
 ## Features

@@ -5,7 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.github.yeicor.radioalarmapp.data.AlarmOverrides
 import com.github.yeicor.radioalarmapp.data.AlarmRepository
+import com.github.yeicor.radioalarmapp.data.AlarmSchedule
+import java.time.ZonedDateTime
 
 class AlarmReceiver : BroadcastReceiver() {
     companion object {
@@ -26,14 +29,22 @@ class AlarmReceiver : BroadcastReceiver() {
         if (!snooze) {
             if (!alarm.enabled) return
             // The widget override has been delivered; the next schedule must be natural again.
-            com.github.yeicor.radioalarmapp.data.AlarmOverrides.remove(context, alarm.id)
+            val override = AlarmOverrides.get(context, alarm.id)
+            AlarmOverrides.remove(context, alarm.id)
             if (alarm.isOneTime) {
                 repo.setEnabled(alarm.id, false)
                 // Also removes any pending intent that a different process-start path could
                 // have scheduled, so a one-shot alarm can never repeat tomorrow.
                 AlarmScheduler.cancelAlarm(context, alarm.id)
             } else {
-                AlarmScheduler.scheduleNext(context, alarm)
+                // Resume after the occurrence this override replaced. Using "now" would
+                // ring again at the natural time when a widget shift moved the alarm
+                // earlier, which is the same occurrence that already fired.
+                AlarmScheduler.scheduleNext(
+                    context,
+                    alarm,
+                    AlarmSchedule.afterFiring(override, ZonedDateTime.now()),
+                )
             }
             AlarmScheduler.cancelSnooze(context, alarm.id)
         } else {

@@ -98,12 +98,18 @@ object AlarmScheduler {
         scheduleAlarmAfter(context, alarm, ZonedDateTime.now())
     }
 
-    fun scheduleNext(context: Context, alarm: Alarm) {
+    /**
+     * Schedules the occurrence after [after]. Callers that just handled a fire pass the
+     * replaced or shifted occurrence so a widget shift to an earlier time cannot ring
+     * again at the natural time later the same day.
+     */
+    fun scheduleNext(
+        context: Context,
+        alarm: Alarm,
+        after: ZonedDateTime = ZonedDateTime.now().plusMinutes(1),
+    ) {
         if (alarm.enabled) {
-            // Broadcasts can arrive a second or two early. Re-scheduling from "now" would
-            // then compute the occurrence that just fired and fire the alarm in a loop, so
-            // require at least one minute of headroom.
-            scheduleAlarmAfter(context, alarm, ZonedDateTime.now().plusMinutes(1))
+            scheduleAlarmAfter(context, alarm, after)
         }
         com.github.yeicor.radioalarmapp.widget.AlarmWidgetProvider.refresh(context)
     }
